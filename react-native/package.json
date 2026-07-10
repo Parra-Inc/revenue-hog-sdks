@@ -1,0 +1,49 @@
+{
+  "name": "@revenuehog/react-native",
+  "version": "0.1.0",
+  "description": "Optional user-level attribution for RevenueHog. Pure JS — works in Expo Go. RevenueHog itself works without any SDK.",
+  "license": "MIT",
+  "author": "Parra, Inc.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parra-Inc/revenue-hog-sdks",
+    "directory": "react-native"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": "*",
+    "react-native-iap": "*"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "react-native-iap": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "keywords": [
+    "revenuehog",
+    "revenue",
+    "attribution",
+    "storekit",
+    "iap",
+    "react-native",
+    "expo"
+  ]
+}

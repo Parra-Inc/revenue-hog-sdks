@@ -21,7 +21,7 @@ Thanks for helping make the hog fatter.
 2. Make your change in exactly one SDK directory (`swift/`, `react-native/`,
    `kotlin/`) unless it's a cross-cutting contract change.
 3. Run the relevant test suite:
-   - `cd swift && swift test`
+   - `swift test` (repo root; the manifest points into swift/)
    - `cd react-native && npm test && npm run build`
    - `cd kotlin && ./gradlew test`
 4. Use conventional commits (`feat(swift): …`, `fix(rn): …`).

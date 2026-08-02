@@ -95,7 +95,7 @@ StoreKit 2 signed transaction so the purchase link verifies even unattested.
 ## Repo layout
 
 ```
-swift/           Swift Package "RevenueHog"      — swift test
+swift/           Swift Package "RevenueHog"      — swift test (run at repo root; Package.swift lives there so the repo URL is SPM-installable)
 react-native/    @revenuehog/react-native        — npm test && npm run build
 kotlin/          com.revenuehog:revenuehog-android — ./gradlew test
 ```

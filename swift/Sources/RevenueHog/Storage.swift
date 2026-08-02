@@ -1,6 +1,9 @@
 import Foundation
+#if canImport(Security)
+import Security
+#endif
 
-/// Tiny key/value seam so tests never touch real UserDefaults.
+/// Tiny key/value seam so tests never touch real UserDefaults or Keychain.
 protocol KeyValueStore: Sendable {
     func get(_ key: String) -> String?
     func set(_ value: String?, forKey key: String)
@@ -20,13 +23,77 @@ final class DefaultsStore: KeyValueStore, @unchecked Sendable {
     }
 }
 
-/// Typed accessors over the store. Persists the anonymous id (so purchases
-/// attribute before login) and a map of originalTransactionId → the user id
-/// it was last reported under (so `identify` can re-attribute).
+#if canImport(Security)
+/// Keychain-backed store for the two values worth protecting: the device
+/// token and the App Attest key id. Generic passwords under one service,
+/// no access group, `AfterFirstUnlock` so early launches can read them.
+final class KeychainStore: KeyValueStore, @unchecked Sendable {
+    private let service: String
+
+    init(service: String = "dev.revenuehog.sdk") {
+        self.service = service
+    }
+
+    func get(_ key: String) -> String? {
+        var query = baseQuery(key)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func set(_ value: String?, forKey key: String) {
+        guard let value else {
+            SecItemDelete(baseQuery(key) as CFDictionary)
+            return
+        }
+        let data = Data(value.utf8)
+        var add = baseQuery(key)
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        if SecItemAdd(add as CFDictionary, nil) == errSecDuplicateItem {
+            SecItemUpdate(
+                baseQuery(key) as CFDictionary,
+                [kSecValueData as String: data] as CFDictionary
+            )
+        }
+    }
+
+    private func baseQuery(_ key: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+    }
+}
+#else
+/// Platforms without Security.framework never attest anyway; fall back to
+/// defaults storage so the package still compiles.
+final class KeychainStore: KeyValueStore, @unchecked Sendable {
+    private let fallback = DefaultsStore()
+
+    init(service: String = "dev.revenuehog.sdk") {}
+
+    func get(_ key: String) -> String? { fallback.get(key) }
+    func set(_ value: String?, forKey key: String) { fallback.set(value, forKey: key) }
+}
+#endif
+
+/// Typed accessors over the two stores. Identity state (anonymous id,
+/// sent-transaction map) lives in defaults; enrollment credentials (device
+/// token, App Attest key id) live in the Keychain.
 struct Storage: Sendable {
     private let store: KeyValueStore
+    private let secure: KeyValueStore
 
-    init(store: KeyValueStore) { self.store = store }
+    init(store: KeyValueStore, secure: KeyValueStore) {
+        self.store = store
+        self.secure = secure
+    }
 
     var anonymousId: String {
         if let existing = store.get("rh_anonymous_id") { return existing }
@@ -54,6 +121,36 @@ struct Storage: Sendable {
         }
     }
 
+    /// Server-minted `dt_…` credential from App Attest enrollment.
+    var deviceToken: String? {
+        get { secure.get("rh_device_token") }
+        nonmutating set { secure.set(newValue, forKey: "rh_device_token") }
+    }
+
+    /// App Attest key id, persisted so retries reuse the same key.
+    var attestKeyId: String? {
+        get { secure.get("rh_attest_key_id") }
+        nonmutating set { secure.set(newValue, forKey: "rh_attest_key_id") }
+    }
+
+    /// Enrollment is not retried before this instant (set after the server
+    /// says the app is not connected to any org yet).
+    var attestBackoffUntil: Date? {
+        get {
+            store.get("rh_attest_backoff_until")
+                .flatMap(Double.init)
+                .map(Date.init(timeIntervalSince1970:))
+        }
+        nonmutating set {
+            store.set(
+                newValue.map { String($0.timeIntervalSince1970) },
+                forKey: "rh_attest_backoff_until"
+            )
+        }
+    }
+
+    /// Forgets who the user is. Enrollment credentials are device-scoped,
+    /// not user-scoped, so they survive.
     func resetIdentity() {
         store.set(nil, forKey: "rh_user_id")
         store.set(nil, forKey: "rh_sent_txns")

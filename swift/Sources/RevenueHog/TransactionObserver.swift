@@ -3,10 +3,11 @@ import Foundation
 import StoreKit
 
 /// Watches StoreKit 2 and reports attribution for every verified
-/// transaction — current entitlements once at launch (so existing
+/// transaction: current entitlements once at launch (so existing
 /// subscribers attribute immediately), then the live `updates` stream.
-/// Already-reported transactions are deduped by the client, and the
-/// backend endpoint is idempotent anyway.
+/// The Apple-signed JWS rides along so the server can verify the
+/// transaction independently. Already-reported transactions are deduped
+/// by the client, and the backend endpoint is idempotent anyway.
 enum TransactionObserver {
     static func start(client: HogClient) -> Task<Void, Never> {
         Task.detached(priority: .utility) {
@@ -25,7 +26,8 @@ enum TransactionObserver {
         guard case .verified(let transaction) = result else { return }
         await client.attribute(
             originalTransactionId: String(transaction.originalID),
-            productId: transaction.productID
+            productId: transaction.productID,
+            jws: result.jwsRepresentation
         )
     }
 }

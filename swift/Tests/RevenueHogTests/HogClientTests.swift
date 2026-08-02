@@ -22,7 +22,8 @@ final class HogClientTests: XCTestCase {
 
         let request = transport.recorded.first
         XCTAssertEqual(request?.url.absoluteString, "https://example.test/api/sdk/v1/identify")
-        XCTAssertEqual(request?.headers["Authorization"], "Bearer pk_test_123")
+        XCTAssertEqual(request?.headers["Authorization"], "Bearer dt_test_123")
+        XCTAssertNil(request?.headers["X-RevenueHog-Unattested"])
         XCTAssertEqual(request?.headers["Content-Type"], "application/json")
         XCTAssertEqual(request?.json["appUserId"] as? String, "user_42")
         XCTAssertEqual(request?.json["bundleId"] as? String, "com.example.app")
@@ -83,7 +84,7 @@ final class HogClientTests: XCTestCase {
         await client.setAttributes(["plan": "pro"])
         XCTAssertEqual(DiskQueue(directory: directory).load().count, 1)
 
-        // network recovers (script empty → 200s) — flush drains the queue
+        // network recovers (script empty → 200s); flush drains the queue
         await client.flush()
         XCTAssertEqual(DiskQueue(directory: directory).load().count, 0)
         XCTAssertEqual(transport.recorded.count, 4)
@@ -100,14 +101,18 @@ final class HogClientTests: XCTestCase {
         XCTAssertEqual(DiskQueue(directory: directory).load().count, 1)
     }
 
-    func testUnauthorizedIsDroppedNotQueued() async {
-        let transport = MockTransport(script: [.status(401)])
+    func testAttributeSendsJwsWhenProvided() async {
+        let transport = MockTransport()
         let client = TestSupport.makeClient(transport: transport, queueDirectory: directory)
 
-        await client.setAttributes(["a": "b"])
+        await client.attribute(
+            originalTransactionId: "txn_1", productId: "pro.monthly", jws: "eyJhbGciOi.fake.sig"
+        )
 
-        XCTAssertEqual(transport.recorded.count, 1) // no retries on 401
-        XCTAssertEqual(DiskQueue(directory: directory).load().count, 0)
+        let request = transport.recorded.first
+        XCTAssertEqual(request?.url.path, "/api/sdk/v1/attribute")
+        XCTAssertEqual(request?.json["jws"] as? String, "eyJhbGciOi.fake.sig")
+        XCTAssertEqual(request?.json["originalTransactionId"] as? String, "txn_1")
     }
 
     func testResetIssuesFreshAnonymousIdAndClearsState() async {

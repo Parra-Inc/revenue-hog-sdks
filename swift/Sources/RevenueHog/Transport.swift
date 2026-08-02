@@ -3,17 +3,24 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// What came back from the server. identify/attribute only look at the
+/// status; the attestation endpoints also read the JSON body.
+struct TransportResponse: Sendable {
+    var status: Int
+    var body: Data
+}
+
 /// Minimal HTTP seam so tests can run without a network.
 protocol Transport: Sendable {
-    /// POSTs `body` and returns the HTTP status code. Throws on transport
-    /// (network) failure only — HTTP error statuses are returned, not thrown.
-    func post(url: URL, body: Data, headers: [String: String]) async throws -> Int
+    /// POSTs `body` and returns the response. Throws on transport
+    /// (network) failure only. HTTP error statuses are returned, not thrown.
+    func post(url: URL, body: Data, headers: [String: String]) async throws -> TransportResponse
 }
 
 struct URLSessionTransport: Transport {
     var session: URLSession = .shared
 
-    func post(url: URL, body: Data, headers: [String: String]) async throws -> Int {
+    func post(url: URL, body: Data, headers: [String: String]) async throws -> TransportResponse {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
@@ -21,7 +28,10 @@ struct URLSessionTransport: Transport {
         for (field, value) in headers {
             request.setValue(value, forHTTPHeaderField: field)
         }
-        let (_, response) = try await session.data(for: request)
-        return (response as? HTTPURLResponse)?.statusCode ?? 0
+        let (data, response) = try await session.data(for: request)
+        return TransportResponse(
+            status: (response as? HTTPURLResponse)?.statusCode ?? 0,
+            body: data
+        )
     }
 }

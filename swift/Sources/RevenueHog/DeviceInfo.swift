@@ -1,6 +1,6 @@
 import Foundation
 
-/// Device context sent with `identify`. Nothing here is an identifier —
+/// Device context sent with `identify`. Nothing here is an identifier:
 /// no IDFA, no IDFV, no fingerprinting. Just enough for a customer profile.
 struct DeviceInfo: Sendable {
     var bundleId: String
@@ -8,6 +8,16 @@ struct DeviceInfo: Sendable {
     var osVersion: String?
     var deviceModel: String?
     var locale: String?
+
+    /// Compile-time simulator flag, passed through an init parameter so
+    /// tests can exercise the simulator path on any host.
+    static let isSimulator: Bool = {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
+    }()
 
     static func current() -> DeviceInfo {
         let os = ProcessInfo.processInfo.operatingSystemVersion

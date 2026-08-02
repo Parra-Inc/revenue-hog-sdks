@@ -1,7 +1,7 @@
 import Foundation
 @testable import RevenueHog
 
-/// In-memory KeyValueStore so tests never touch UserDefaults.
+/// In-memory KeyValueStore so tests never touch UserDefaults or Keychain.
 final class MemoryStore: KeyValueStore, @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String: String] = [:]
@@ -28,10 +28,11 @@ struct RecordedRequest {
 }
 
 /// Scriptable transport. Responses are consumed in order; once the script
-/// runs dry every request succeeds with 200.
+/// runs dry every request succeeds with 200 and an empty body.
 final class MockTransport: Transport, @unchecked Sendable {
     enum Response {
         case status(Int)
+        case json(Int, String)
         case networkError
     }
 
@@ -48,15 +49,60 @@ final class MockTransport: Transport, @unchecked Sendable {
         return requests
     }
 
-    func post(url: URL, body: Data, headers: [String: String]) async throws -> Int {
-        lock.lock()
-        requests.append(RecordedRequest(url: url, body: body, headers: headers))
-        let response = script.isEmpty ? .status(200) : script.removeFirst()
-        lock.unlock()
-        switch response {
-        case .status(let code): return code
+    func post(url: URL, body: Data, headers: [String: String]) async throws -> TransportResponse {
+        switch record(RecordedRequest(url: url, body: body, headers: headers)) {
+        case .status(let code): return TransportResponse(status: code, body: Data())
+        case .json(let code, let json): return TransportResponse(status: code, body: Data(json.utf8))
         case .networkError: throw URLError(.notConnectedToInternet)
         }
+    }
+
+    private func record(_ request: RecordedRequest) -> Response {
+        lock.lock(); defer { lock.unlock() }
+        requests.append(request)
+        return script.isEmpty ? .status(200) : script.removeFirst()
+    }
+}
+
+/// Scriptable AttestService. Results are consumed in order; once a script
+/// runs dry, calls succeed with generated defaults.
+final class FakeAttestService: AttestService, @unchecked Sendable {
+    private let lock = NSLock()
+    var supported = true
+    /// When true, `attestKey` never returns (simulates slow enrollment).
+    var hangs = false
+    var generateKeyResults: [Result<String, Error>] = []
+    var attestKeyResults: [Result<Data, Error>] = []
+    private(set) var generateKeyCalls = 0
+    private(set) var attestKeyCalls: [(keyId: String, clientDataHash: Data)] = []
+
+    var isSupported: Bool { supported }
+
+    func generateKey() async throws -> String {
+        try nextKeyResult().get()
+    }
+
+    func attestKey(_ keyId: String, clientDataHash: Data) async throws -> Data {
+        if hangs {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+        }
+        return try nextAttestResult(keyId: keyId, clientDataHash: clientDataHash).get()
+    }
+
+    private func nextKeyResult() -> Result<String, Error> {
+        lock.lock(); defer { lock.unlock() }
+        generateKeyCalls += 1
+        return generateKeyResults.isEmpty
+            ? .success("key_\(generateKeyCalls)")
+            : generateKeyResults.removeFirst()
+    }
+
+    private func nextAttestResult(keyId: String, clientDataHash: Data) -> Result<Data, Error> {
+        lock.lock(); defer { lock.unlock() }
+        attestKeyCalls.append((keyId, clientDataHash))
+        return attestKeyResults.isEmpty
+            ? .success(Data("fake-attestation".utf8))
+            : attestKeyResults.removeFirst()
     }
 }
 
@@ -66,19 +112,33 @@ enum TestSupport {
             .appendingPathComponent("rh-tests-\(UUID().uuidString)", isDirectory: true)
     }
 
+    /// A secure store that already holds a device token, so tests not
+    /// about enrollment skip it entirely.
+    static func enrolledSecureStore(token: String = "dt_test_123") -> MemoryStore {
+        let store = MemoryStore()
+        store.set(token, forKey: "rh_device_token")
+        return store
+    }
+
     static func makeClient(
         transport: MockTransport,
         store: KeyValueStore = MemoryStore(),
-        queueDirectory: URL = tempDirectory()
+        secureStore: KeyValueStore = enrolledSecureStore(),
+        attestService: AttestService = FakeAttestService(),
+        queueDirectory: URL = tempDirectory(),
+        isSimulator: Bool = false,
+        enrollmentWait: TimeInterval = 5,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) -> HogClient {
         HogClient(
-            apiKey: "pk_test_123",
             options: Options(
                 baseURL: URL(string: "https://example.test")!,
                 logLevel: .silent
             ),
             transport: transport,
             store: store,
+            secureStore: secureStore,
+            attestService: attestService,
             queueDirectory: queueDirectory,
             device: DeviceInfo(
                 bundleId: "com.example.app",
@@ -87,6 +147,9 @@ enum TestSupport {
                 deviceModel: "iPhone15,2",
                 locale: "en_US"
             ),
+            isSimulator: isSimulator,
+            enrollmentWait: enrollmentWait,
+            now: now,
             backoff: { _ in 0 }
         )
     }

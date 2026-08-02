@@ -6,14 +6,16 @@ import Foundation
 /// `application(_:didFinishLaunchingWithOptions:)`:
 ///
 /// ```swift
-/// RevenueHog.configure(apiKey: "pk_live_…")
+/// RevenueHog.configure()
 /// ```
 ///
-/// That's it. Purchases are attributed automatically via StoreKit 2.
-/// Call `identify(userId:)` when you know who the user is.
+/// That's it. No API key: the SDK enrolls the device with App Attest and
+/// the server maps the attested bundle id to your org. Purchases are
+/// attributed automatically via StoreKit 2. Call `identify(userId:)` when
+/// you know who the user is.
 ///
 /// Note: RevenueHog's revenue tracking works entirely server-side without
-/// this SDK. Installing it adds user-level attribution — knowing *which*
+/// this SDK. Installing it adds user-level attribution: knowing *which*
 /// of your users a purchase belongs to.
 public enum RevenueHog {
     private static let lock = NSLock()
@@ -22,13 +24,15 @@ public enum RevenueHog {
 
     /// Sets up the SDK. Call once, as early as possible. Safe to call
     /// again (reconfigures); safe to never call (everything else no-ops).
-    public static func configure(apiKey: String, options: Options = Options()) {
+    public static func configure(options: Options = Options()) {
         lock.lock()
         defer { lock.unlock() }
         listener?.cancel()
-        let client = HogClient(apiKey: apiKey, options: options)
+        let client = HogClient(options: options)
         self.client = client
-        Task { await client.flush() }
+        let log = Logger(level: options.logLevel)
+        Task.detached(priority: .utility) { EntitlementCheck.run(log: log) }
+        Task { await client.start() }
         #if canImport(StoreKit)
         if options.enableAutoAttribution {
             listener = TransactionObserver.start(client: client)
@@ -70,7 +74,7 @@ public enum RevenueHog {
         let client = self.client
         lock.unlock()
         guard let client else {
-            Logger(level: .warn).warn("not configured — call RevenueHog.configure(apiKey:) first")
+            Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
             return
         }
         Task { await work(client) }

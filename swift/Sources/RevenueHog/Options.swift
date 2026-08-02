@@ -1,7 +1,7 @@
 import Foundation
 
 /// How chatty the SDK is. Everything logs with a `[revenuehog]` prefix.
-/// Nothing the SDK logs is ever fatal — errors are swallowed by design.
+/// Nothing the SDK logs is ever fatal; errors are swallowed by design.
 public enum LogLevel: Int, Comparable, Sendable {
     case debug = 0
     case info = 1
@@ -14,7 +14,7 @@ public enum LogLevel: Int, Comparable, Sendable {
     }
 }
 
-/// Optional knobs for `RevenueHog.configure(apiKey:options:)`.
+/// Optional knobs for `RevenueHog.configure(options:)`.
 public struct Options: Sendable {
     /// API host. Override for self-hosted deployments or local dev.
     public var baseURL: URL

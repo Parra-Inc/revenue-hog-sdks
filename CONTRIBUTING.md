@@ -10,7 +10,8 @@ Thanks for helping make the hog fatter.
   lazily and wrapped in try/catch.
 - **Never crash the host app.** All SDK errors are swallowed into the debug
   log. If your change can throw across the public API boundary, it's a bug.
-- **Small.** Each SDK core stays under ~500 lines. Fight for every line.
+- **Small.** Each SDK core stays under ~500 lines (~800 for the Swift
+  package, which carries App Attest enrollment). Fight for every line.
 - **Tests required.** Queue behavior, payload encoding, and retry/backoff
   paths must be covered with a mocked transport.
 

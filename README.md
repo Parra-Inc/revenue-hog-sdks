@@ -33,7 +33,8 @@ untouched — you just see anonymized customers.
 
 Shared behavior, all three:
 
-- **one required line** at app launch — everything else is optional
+- **one required line** at app launch — everything else is optional (no
+  API key: iOS proves itself with App Attest, see below)
 - persisted anonymous id, so purchases attribute before login;
   `identify(userId)` re-attributes them afterward
 - offline/rate-limit safe: exponential backoff (max 3), then a persistent
@@ -45,19 +46,19 @@ Shared behavior, all three:
 **Swift** (App init / `didFinishLaunching`):
 
 ```swift
-RevenueHog.configure(apiKey: "pk_live_…")
+RevenueHog.configure()
 ```
 
 **React Native** (top of your root component/layout):
 
 ```ts
-RevenueHog.configure({ apiKey: 'pk_live_…' });
+RevenueHog.configure();
 ```
 
 **Android** (`Application.onCreate`):
 
 ```kotlin
-RevenueHog.configure(this, "pk_live_…")
+RevenueHog.configure(this)
 ```
 
 Then, when a user logs in (same call everywhere, spelled natively):
@@ -66,8 +67,12 @@ Then, when a user logs in (same call everywhere, spelled natively):
 identify("user_42")
 ```
 
-Your publishable key (`pk_live_…`) lives in the dashboard → settings → API.
-It's write-only for attribution data and safe to ship in a client binary.
+There is no API key. On iOS the SDK enrolls each install with App Attest:
+Apple vouches that the caller is your genuine app, RevenueHog matches it to
+your account through the App Store Connect data it already has, and issues
+the device a private token. Add the App Attest capability to your app target
+and that's it. Calls without attestation (simulator, React Native and
+Android today) still work and are labeled unverified in the dashboard.
 Self-hosting or developing locally? Every SDK takes a base-URL override in
 its configure options.
 
@@ -76,13 +81,16 @@ its configure options.
 All three SDKs speak the same two endpoints:
 
 ```
+POST /api/sdk/v1/attest/challenge   {} -> { challenge }            (iOS enrollment)
+POST /api/sdk/v1/attest             { keyId, attestation, challenge, bundleId } -> { deviceToken }
 POST /api/sdk/v1/identify   { appUserId, bundleId, platform, osVersion?, deviceModel?, locale?, attributes? }
-POST /api/sdk/v1/attribute  { appUserId, bundleId, originalTransactionId, productId? }
-Authorization: Bearer pk_live_…
+POST /api/sdk/v1/attribute  { appUserId, bundleId, originalTransactionId, productId?, jws? }
+Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 
-Both idempotent. `401` = bad key (dropped), `429` = rate limited (backoff +
-queue).
+Both write endpoints are idempotent. `401` = bad device token (re-enroll
+once), `429` = rate limited (backoff + queue). On iOS, `jws` carries the
+StoreKit 2 signed transaction so the purchase link verifies even unattested.
 
 ## Repo layout
 

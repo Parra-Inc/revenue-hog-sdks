@@ -13,8 +13,6 @@ export interface StorageAdapter {
 }
 
 export interface RevenueHogConfig {
-  /** Publishable key from dashboard → settings → API (`pk_live_…`). */
-  apiKey: string;
   /** Override for self-hosted deployments or local dev. */
   baseUrl?: string;
   /**
@@ -44,6 +42,13 @@ export interface AttributePurchaseInput {
    */
   originalTransactionId: string;
   productId?: string;
+  /**
+   * StoreKit 2 signed transaction (`jwsRepresentationIos` on a
+   * react-native-iap purchase). When present the server verifies the
+   * transaction against Apple's signature, so the purchase link is trusted
+   * even before attestation support lands.
+   */
+  jws?: string;
 }
 
 export interface IdentifyPayload {
@@ -61,6 +66,7 @@ export interface AttributePayload {
   bundleId: string;
   originalTransactionId: string;
   productId?: string;
+  jws?: string;
 }
 
 export interface PendingRequest {

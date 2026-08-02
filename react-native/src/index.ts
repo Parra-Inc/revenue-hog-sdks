@@ -14,7 +14,7 @@ let unhookIap: (() => void) | undefined;
 function withClient(name: string, work: (c: HogClient) => Promise<void>): Promise<void> {
   if (!client) {
     new Logger('warn').warn(
-      `${name} called before configure — call RevenueHog.configure({ apiKey }) first`
+      `${name} called before configure — call RevenueHog.configure() first`
     );
     return Promise.resolve();
   }
@@ -25,15 +25,17 @@ function withClient(name: string, work: (c: HogClient) => Promise<void>): Promis
  * RevenueHog user-level attribution. One required line at app startup:
  *
  * ```ts
- * RevenueHog.configure({ apiKey: 'pk_live_…' });
+ * RevenueHog.configure();
  * ```
  *
+ * No API key: requests are unauthenticated and the server labels the
+ * resulting identity data unverified until attestation support lands.
  * RevenueHog's revenue tracking works entirely server-side without this SDK
  * — install it only for user-level attribution.
  */
 export const RevenueHog = {
   /** Set up the SDK. Call once at app startup. Never throws. */
-  configure(config: RevenueHogConfig): void {
+  configure(config: RevenueHogConfig = {}): void {
     try {
       unhookIap?.();
       unhookIap = undefined;

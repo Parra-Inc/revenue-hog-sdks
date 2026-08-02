@@ -36,7 +36,6 @@ export function makeClient(
 ): { client: HogClient; storage: StorageAdapter } {
   const client = new HogClient(
     {
-      apiKey: 'pk_test_123',
       baseUrl: 'https://example.test',
       bundleId: 'com.example.app',
       logLevel: 'silent',

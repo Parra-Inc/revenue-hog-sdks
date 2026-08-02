@@ -8,7 +8,7 @@ import org.junit.Test
 
 class HogClientTest {
     @Test
-    fun `identify posts bearer auth and the full payload`() {
+    fun `identify posts the full payload with no Authorization header`() {
         val transport = FakeTransport()
         val client = TestSupport.makeClient(transport)
 
@@ -16,7 +16,7 @@ class HogClientTest {
 
         val request = transport.requests.first()
         assertEquals("https://example.test/api/sdk/v1/identify", request.url)
-        assertEquals("Bearer pk_test_123", request.headers["Authorization"])
+        assertNull(request.headers["Authorization"])
         assertEquals("application/json", request.headers["Content-Type"])
         assertEquals("user_42", request.json.getString("appUserId"))
         assertEquals("com.example.app", request.json.getString("bundleId"))

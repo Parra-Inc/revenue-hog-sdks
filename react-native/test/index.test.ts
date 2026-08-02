@@ -20,7 +20,6 @@ describe('RevenueHog singleton', () => {
       return { status: 200 };
     };
     RevenueHog.configure({
-      apiKey: 'pk_test_123',
       baseUrl: 'https://example.test',
       bundleId: 'com.example.app',
       storage: memoryStorage(),
@@ -36,7 +35,6 @@ describe('RevenueHog singleton', () => {
   it('configure never throws, even with auto-attribution on and no iap module', () => {
     expect(() =>
       RevenueHog.configure({
-        apiKey: 'pk_test_123',
         bundleId: 'com.example.app',
         storage: memoryStorage(),
         logLevel: 'silent',

@@ -10,7 +10,6 @@ import java.util.concurrent.Executor
  * nothing here ever crashes the host app.
  */
 internal class HogClient(
-    private val apiKey: String,
     private val options: Options,
     private val device: DeviceInfo,
     private val store: KeyValueStore,
@@ -129,18 +128,11 @@ internal class HogClient(
      */
     private fun deliver(path: String, body: String, attempts: Int): Boolean {
         val url = options.baseUrl.trimEnd('/') + path
-        val headers = mapOf(
-            "Authorization" to "Bearer $apiKey",
-            "Content-Type" to "application/json",
-        )
+        val headers = mapOf("Content-Type" to "application/json")
         for (attempt in 0 until attempts) {
             try {
                 when (val status = transport.post(url, body, headers)) {
                     in 200..299 -> return true
-                    401 -> {
-                        log.error("401 from $path — check your publishable key (pk_live_…)")
-                        return true // never accepted; don't retry forever
-                    }
                     429, in 500..599 -> log.warn("$status from $path — backing off")
                     else -> {
                         log.error("$status from $path — dropped")

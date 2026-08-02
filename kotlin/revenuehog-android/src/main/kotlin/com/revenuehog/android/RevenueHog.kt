@@ -13,8 +13,12 @@ import java.util.concurrent.Executors
  * `Application.onCreate()`:
  *
  * ```kotlin
- * RevenueHog.configure(this, "pk_live_…")
+ * RevenueHog.configure(this)
  * ```
+ *
+ * No API key: requests are unauthenticated and the server labels the
+ * resulting identity data unverified until attestation support (Play
+ * Integrity) lands.
  *
  * Note: RevenueHog's revenue tracking works entirely server-side without
  * this SDK (Apple App Store ingestion today). The Android SDK exists for
@@ -29,12 +33,11 @@ object RevenueHog {
     /** Sets up the SDK. Call once, as early as possible. Never throws. */
     @JvmStatic
     @JvmOverloads
-    fun configure(context: Context, apiKey: String, options: Options = Options()) {
+    fun configure(context: Context, options: Options = Options()) {
         try {
             val app = context.applicationContext
             val prefs = app.getSharedPreferences("dev.revenuehog.sdk", Context.MODE_PRIVATE)
             val created = HogClient(
-                apiKey = apiKey,
                 options = options,
                 device = DeviceInfo(
                     bundleId = app.packageName ?: "unknown",
@@ -160,7 +163,7 @@ object RevenueHog {
     private inline fun withClient(name: String, work: (HogClient) -> Unit) {
         val current = client
         if (current == null) {
-            Log.d("RevenueHog", "$name called before configure — call RevenueHog.configure(context, apiKey) first")
+            Log.d("RevenueHog", "$name called before configure — call RevenueHog.configure(context) first")
             return
         }
         try {

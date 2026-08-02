@@ -1,12 +1,12 @@
 # RevenueHog Android SDK
 
-`com.revenuehog:revenuehog-android` — user-level attribution for
+`com.revenuehog:revenuehog-android`: user-level attribution for
 [RevenueHog](https://revenuehog.dev). Kotlin, minSdk 24, zero dependencies
 (HttpURLConnection + org.json, both ship with the platform), ~500 lines.
 
 > **You don't need this SDK to use RevenueHog.** Revenue tracking works
 > server-side from your App Store Connect `.p8` key. And to be direct:
-> **RevenueHog ingests Apple App Store revenue today** — this Android SDK
+> **RevenueHog ingests Apple App Store revenue today**; this Android SDK
 > exists for *identity parity* across your platforms and for future Google
 > Play support. `identify` / `setAttributes` enrich customer profiles now;
 > `attributePurchase` stores the purchase→user mapping server-side so your
@@ -14,7 +14,7 @@
 
 ## Install
 
-Maven Central (placeholder — publishing lands with the first tagged release):
+Maven Central (placeholder, publishing lands with the first tagged release):
 
 ```kotlin
 // build.gradle.kts
@@ -34,7 +34,7 @@ One required line, in `Application.onCreate()`:
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        RevenueHog.configure(this, "pk_live_…") // ← the one line
+        RevenueHog.configure(this) // ← the one line, no key needed
     }
 }
 ```
@@ -47,6 +47,12 @@ RevenueHog.identify("user_42")
 
 Anything reported before login (under a persisted anonymous id) is
 re-attributed to `user_42`.
+
+### How auth works
+
+There is no API key. The server maps requests to your org by package name,
+and identity data from this SDK is labeled **unverified** in the RevenueHog
+dashboard until attestation support lands (Play Integrity is planned).
 
 ### Play Billing (optional)
 
@@ -81,7 +87,7 @@ your delegate untouched.
 
 | Call | What it does |
 |---|---|
-| `RevenueHog.configure(context, apiKey, options = Options())` | Sets up the SDK. Call once in `Application.onCreate()`. Never throws. |
+| `RevenueHog.configure(context, options = Options())` | Sets up the SDK. Call once in `Application.onCreate()`. Never throws. |
 | `RevenueHog.identify(userId)` | Links the anonymous id (and prior reports) to your user id. |
 | `RevenueHog.setAttributes(map)` | Attaches flat string key/values to the user's profile. |
 | `RevenueHog.attributePurchase(purchaseToken, productId?)` | Stores purchase→user mapping (for future Play ingestion). |
@@ -92,7 +98,7 @@ your delegate untouched.
 ### Options
 
 ```kotlin
-RevenueHog.configure(this, "pk_live_…", Options(
+RevenueHog.configure(this, Options(
     baseUrl = "https://hog.internal.example", // self-hosted / dev
     logLevel = LogLevel.DEBUG,                // default WARN
 ))
@@ -102,7 +108,7 @@ RevenueHog.configure(this, "pk_live_…", Options(
 
 | You want | SDK needed? |
 |---|---|
-| Apple revenue feed, MRR, churn, push alerts | **No** — `.p8` server-side ingestion covers it |
+| Apple revenue feed, MRR, churn, push alerts | **No**, `.p8` server-side ingestion covers it |
 | Same user identity across your iOS + Android apps | Yes |
 | Device model / OS / locale on customer profiles | Yes |
 | Custom attributes (`plan`, `cohort`, …) | Yes |
@@ -120,18 +126,22 @@ RevenueHog.configure(this, "pk_live_…", Options(
   already reported for the current user.
 - **Private.** Sends only: your user id (or an anonymous UUID), package
   name, OS version, device model, locale, and attributes you pass. No ad id.
+- **Unverified until attested.** Requests carry no credentials, so identity
+  data from this SDK is labeled unverified in the dashboard until attestation
+  support (Play Integrity) lands.
 - Requires the `INTERNET` permission (which your app almost certainly
   already declares).
 
 ## Troubleshooting
 
-- **Nothing in logcat** — filter by tag `RevenueHog`; pass
+- **Nothing in logcat**: filter by tag `RevenueHog`; pass
   `Options(logLevel = LogLevel.DEBUG)` to watch requests.
-- **401 logged** — bad key; it must start with `pk_live_`.
-- **Where's my Android revenue?** — Apple ingestion is live today; Play
+- **Customer rows labeled unverified**: expected for this SDK today; the
+  label clears once attestation support ships.
+- **Where's my Android revenue?**: Apple ingestion is live today; Play
   ingestion is on the roadmap. Your `attributePurchase` calls are already
   being stored server-side.
-- **Self-hosting** — point `Options.baseUrl` at your deployment; paths are
+- **Self-hosting**: point `Options.baseUrl` at your deployment; paths are
   `/api/sdk/v1/identify` and `/api/sdk/v1/attribute`.
 
 ## Tests
@@ -141,5 +151,5 @@ cd kotlin && ./gradlew test
 ```
 
 Plain JVM unit tests (no Robolectric, no emulator): payload building, queue
-persistence, retry/backoff, identity aliasing — all against a fake transport
+persistence, retry/backoff, identity aliasing, all against a fake transport
 and in-memory store.

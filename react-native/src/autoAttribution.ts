@@ -1,10 +1,16 @@
 import type { HogClient } from './client';
 import type { Logger } from './logger';
 
-interface IapPurchase {
+export interface IapPurchase {
   transactionId?: string;
   originalTransactionIdentifierIOS?: string;
   productId?: string;
+  /** react-native-iap ≥ 13 (StoreKit 2 mode). */
+  jwsRepresentationIos?: string;
+  /** casing used by some react-native-iap builds */
+  jwsRepresentationIOS?: string;
+  /** older StoreKit 2 field that also carries the signed transaction */
+  verificationResultIOS?: string;
 }
 
 interface IapModule {
@@ -36,6 +42,7 @@ export function tryHookReactNativeIap(
         void client.attributePurchase({
           originalTransactionId: txn,
           productId: purchase?.productId,
+          jws: jwsFromPurchase(purchase),
         });
       } catch {
         // never let attribution break the host app's purchase flow
@@ -53,4 +60,20 @@ export function tryHookReactNativeIap(
     // react-native-iap not installed — auto-attribution silently off
     return undefined;
   }
+}
+
+/**
+ * StoreKit 2 signed transaction from a react-native-iap purchase, when the
+ * installed version exposes it (iOS only). Tolerant of the field-name drift
+ * across react-native-iap releases; anything that doesn't look like a JWS
+ * (three dot-separated segments) is ignored.
+ */
+export function jwsFromPurchase(purchase: IapPurchase | undefined): string | undefined {
+  const candidate =
+    purchase?.jwsRepresentationIos ??
+    purchase?.jwsRepresentationIOS ??
+    purchase?.verificationResultIOS;
+  return typeof candidate === 'string' && candidate.split('.').length === 3
+    ? candidate
+    : undefined;
 }

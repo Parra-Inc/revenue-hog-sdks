@@ -3,7 +3,7 @@ import { memoryStorage } from '../src/storage';
 import { makeClient, mockFetch } from './helpers';
 
 describe('HogClient', () => {
-  it('identify posts bearer auth and the full payload', async () => {
+  it('identify posts the full payload with no Authorization header', async () => {
     const transport = mockFetch();
     const { client } = makeClient(transport);
 
@@ -11,7 +11,7 @@ describe('HogClient', () => {
 
     const request = transport.requests[0];
     expect(request?.url).toBe('https://example.test/api/sdk/v1/identify');
-    expect(request?.headers.Authorization).toBe('Bearer pk_test_123');
+    expect(request?.headers.Authorization).toBeUndefined();
     expect(request?.headers['Content-Type']).toBe('application/json');
     expect(request?.body).toMatchObject({
       appUserId: 'user_42',
@@ -77,6 +77,33 @@ describe('HogClient', () => {
         .filter((r) => r.url.endsWith('/attribute'))
         .map((r) => r.body.originalTransactionId)
     ).toEqual(['txn_1', 'txn_1']);
+  });
+
+  it('attributePurchase forwards the StoreKit 2 JWS when provided', async () => {
+    const transport = mockFetch();
+    const { client } = makeClient(transport);
+    const jws = 'eyJhbGciOiJFUzI1NiJ9.eyJidW5kbGVJZCI6ImNvbS5leGFtcGxlLmFwcCJ9.c2ln';
+
+    await client.attributePurchase({
+      originalTransactionId: 'txn_1',
+      productId: 'pro.monthly',
+      jws,
+    });
+
+    expect(transport.requests[0]?.body).toMatchObject({
+      originalTransactionId: 'txn_1',
+      productId: 'pro.monthly',
+      jws,
+    });
+  });
+
+  it('attributePurchase omits jws from the body when absent', async () => {
+    const transport = mockFetch();
+    const { client } = makeClient(transport);
+
+    await client.attributePurchase({ originalTransactionId: 'txn_1' });
+
+    expect(transport.requests[0]?.body).not.toHaveProperty('jws');
   });
 
   it('skips duplicate attribution for the same user', async () => {

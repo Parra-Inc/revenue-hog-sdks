@@ -23,7 +23,6 @@ export interface ClientSeams {
 }
 
 export class HogClient {
-  private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly storage: StorageAdapter;
   private readonly queue: PersistentQueue;
@@ -34,8 +33,7 @@ export class HogClient {
   /** serializes all operations so identify/attribute keep their order */
   private ops: Promise<void> = Promise.resolve();
 
-  constructor(config: RevenueHogConfig, seams: ClientSeams = {}) {
-    this.apiKey = config.apiKey;
+  constructor(config: RevenueHogConfig = {}, seams: ClientSeams = {}) {
     this.baseUrl = (config.baseUrl ?? 'https://revenuehog.dev').replace(/\/+$/, '');
     this.storage = config.storage ?? detectAsyncStorage() ?? memoryStorage();
     this.queue = new PersistentQueue(this.storage);
@@ -143,6 +141,7 @@ export class HogClient {
       bundleId: this.device.bundleId ?? 'unknown',
       originalTransactionId: txn,
       ...(input.productId ? { productId: input.productId } : {}),
+      ...(input.jws ? { jws: input.jws } : {}),
     };
     await this.send(ATTRIBUTE_PATH, payload);
   }
@@ -199,17 +198,10 @@ export class HogClient {
       try {
         const res = await this.fetchFn(`${this.baseUrl}${path}`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body,
         });
         if (res.status >= 200 && res.status < 300) return true;
-        if (res.status === 401) {
-          this.log.error(`401 from ${path} — check your publishable key (pk_live_…)`);
-          return true; // never accepted; don't retry forever
-        }
         if (res.status === 429 || res.status >= 500) {
           this.log.warn(`${res.status} from ${path} — backing off`);
         } else {

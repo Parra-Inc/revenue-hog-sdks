@@ -46,7 +46,6 @@ internal object TestSupport {
         transport: FakeTransport,
         store: KeyValueStore = MemoryStore(),
     ): HogClient = HogClient(
-        apiKey = "pk_test_123",
         options = Options(baseUrl = "https://example.test", logLevel = LogLevel.SILENT),
         device = DeviceInfo(
             bundleId = "com.example.app",

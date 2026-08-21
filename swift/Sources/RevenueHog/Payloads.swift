@@ -22,6 +22,44 @@ struct AttributePayload: Codable, Equatable {
     var jws: String?
 }
 
+/// Body for `POST /api/sdk/v1/paywall`. `environment` is StoreKit's
+/// AppTransaction environment (omitted until resolved; the server reads an
+/// absent value as Production). `forceVariant` is the QA preview path,
+/// honored server-side only for non-Production environments.
+struct PaywallRequestPayload: Codable, Equatable {
+    var appUserId: String
+    var bundleId: String
+    var entitlement: String
+    var environment: String?
+    var forceVariant: String?
+    var installId: String
+}
+
+/// Response from `POST /api/sdk/v1/paywall`. Everything is optional so a
+/// future field change can never make the money path throw; an empty or
+/// undecodable answer resolves to the compiled-in fallback.
+struct PaywallResponsePayload: Decodable {
+    struct WireSku: Decodable {
+        var productId: String
+        var kind: String
+    }
+
+    var entitlement: String?
+    var skus: [WireSku]?
+    var experimentId: String?
+    var variantKey: String?
+    var forced: Bool?
+    var ttlSeconds: Int?
+}
+
+/// Body for `POST /api/sdk/v1/paywall/impression`.
+struct PaywallImpressionPayload: Codable, Equatable {
+    var bundleId: String
+    var experimentId: String
+    var installId: String
+    var renderedSkus: [String]
+}
+
 /// Body for `POST /api/sdk/v1/attest`.
 struct AttestPayload: Codable, Equatable {
     var keyId: String

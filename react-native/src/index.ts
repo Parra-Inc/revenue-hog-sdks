@@ -4,6 +4,10 @@ import { tryHookReactNativeIap } from './autoAttribution';
 import type {
   AttributePurchaseInput,
   LogLevel,
+  Paywall,
+  PaywallOptions,
+  PaywallSku,
+  PaywallSkuKind,
   RevenueHogConfig,
   StorageAdapter,
 } from './types';
@@ -85,6 +89,45 @@ export const RevenueHog = {
   flush(): Promise<void> {
     return withClient('flush', (c) => c.flush());
   },
+
+  /**
+   * Which SKUs this install's paywall should offer for `entitlement`, as an
+   * ORDERED list the RevenueHog dashboard controls (and can A/B test)
+   * without an app update. Never rejects: fresh cache, then a short network
+   * fetch, then stale cache, then your compiled-in `fallback` list — the
+   * paywall is the money path and can never come back empty. Call it when
+   * the paywall is about to show, render the SKUs in the returned order,
+   * and call `paywallShown` once it is on screen.
+   */
+  paywall(
+    entitlement: string,
+    fallback: string[],
+    options?: PaywallOptions
+  ): Promise<Paywall> {
+    if (!client) {
+      new Logger('warn').warn(
+        'paywall called before configure — serving the compiled-in fallback'
+      );
+      return Promise.resolve({
+        entitlement,
+        skus: fallback.map((productId) => ({ productId, kind: 'unknown' as const })),
+        productIds: [...fallback],
+        isFallback: true,
+      });
+    }
+    return client.paywall(entitlement, fallback, options);
+  },
+
+  /**
+   * Report that a paywall actually APPEARED, with the product ids that
+   * really rendered (after store product loading). Keeps prefetched-but-
+   * never-shown paywalls out of experiment denominators and surfaces a
+   * variant whose SKU failed to load as a broken test. No-op outside an
+   * experiment.
+   */
+  paywallShown(paywall: Paywall, rendered: string[]): Promise<void> {
+    return withClient('paywallShown', (c) => c.paywallShown(paywall, rendered));
+  },
 };
 
 export default RevenueHog;
@@ -93,6 +136,10 @@ export { memoryStorage } from './storage';
 export type {
   AttributePurchaseInput,
   LogLevel,
+  Paywall,
+  PaywallOptions,
+  PaywallSku,
+  PaywallSkuKind,
   RevenueHogConfig,
   StorageAdapter,
 };

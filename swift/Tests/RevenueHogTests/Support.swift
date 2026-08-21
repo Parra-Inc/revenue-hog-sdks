@@ -34,6 +34,9 @@ final class MockTransport: Transport, @unchecked Sendable {
         case status(Int)
         case json(Int, String)
         case networkError
+        /// Never answers (until task cancellation): the slow-network case
+        /// the paywall timeout races against.
+        case hang
     }
 
     private let lock = NSLock()
@@ -54,6 +57,9 @@ final class MockTransport: Transport, @unchecked Sendable {
         case .status(let code): return TransportResponse(status: code, body: Data())
         case .json(let code, let json): return TransportResponse(status: code, body: Data(json.utf8))
         case .networkError: throw URLError(.notConnectedToInternet)
+        case .hang:
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+            throw URLError(.timedOut)
         }
     }
 
@@ -128,6 +134,7 @@ enum TestSupport {
         queueDirectory: URL = tempDirectory(),
         isSimulator: Bool = false,
         enrollmentWait: TimeInterval = 5,
+        paywallTimeout: TimeInterval = 5,
         now: @escaping @Sendable () -> Date = { Date() }
     ) -> HogClient {
         HogClient(
@@ -149,6 +156,7 @@ enum TestSupport {
             ),
             isSimulator: isSimulator,
             enrollmentWait: enrollmentWait,
+            paywallTimeout: paywallTimeout,
             now: now,
             backoff: { _ in 0 }
         )

@@ -98,6 +98,58 @@ object RevenueHog {
     }
 
     /**
+     * Which SKUs this install's paywall should offer for [entitlement], as
+     * an ORDERED list the RevenueHog dashboard controls (and can A/B test)
+     * without an app update. Never fails: fresh cache, then a short network
+     * fetch, then stale cache, then your compiled-in [fallback] list — the
+     * paywall is the money path and can never come back empty.
+     *
+     * Call it when the paywall is about to show, render the SKUs in the
+     * returned order, and call [paywallShown] once it is on screen.
+     * [onResult] runs on the SDK's background thread — hop to the main
+     * thread before touching views. [forceVariant] is QA-only: the server
+     * honors it for non-production traffic and records nothing.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun paywall(
+        entitlement: String,
+        fallback: List<String>,
+        forceVariant: String? = null,
+        onResult: (Paywall) -> Unit,
+    ) {
+        val current = client
+        if (current == null) {
+            Log.d("RevenueHog", "paywall called before configure — serving the compiled-in fallback")
+            try {
+                onResult(Paywall.fallback(entitlement, fallback))
+            } catch (_: Throwable) {
+            }
+            return
+        }
+        try {
+            current.paywall(entitlement, fallback, forceVariant, onResult)
+        } catch (t: Throwable) {
+            Log.d("RevenueHog", "swallowed: ${t.message}")
+            try {
+                onResult(Paywall.fallback(entitlement, fallback))
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    /**
+     * Reports that a paywall actually APPEARED, with the product ids that
+     * really rendered (after billing product loading). Keeps prefetched-
+     * but-never-shown paywalls out of experiment denominators. No-op
+     * outside an experiment.
+     */
+    @JvmStatic
+    fun paywallShown(paywall: Paywall, rendered: List<String>) {
+        withClient("paywallShown") { it.paywallShown(paywall, rendered) }
+    }
+
+    /**
      * Optional Play Billing helper. If the host app ships
      * `com.android.billingclient` (the SDK itself does NOT depend on it),
      * this returns a `PurchasesUpdatedListener` that forwards every purchase

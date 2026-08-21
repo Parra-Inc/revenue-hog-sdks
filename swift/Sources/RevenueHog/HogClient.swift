@@ -1,18 +1,33 @@
 import Foundation
+#if canImport(StoreKit)
+import StoreKit
+#endif
 
 /// All SDK state and networking lives on this actor. Every operation is
 /// best-effort: failures are logged and queued, never thrown to the host app.
 actor HogClient {
-    private let options: Options
-    private let transport: Transport
-    private let storage: Storage
+    // Internal (not private): Paywall.swift extends this actor from its own
+    // file and shares the plumbing.
+    let options: Options
+    let transport: Transport
+    let storage: Storage
     private let queue: DiskQueue
-    private let device: DeviceInfo
-    private let log: Logger
+    let device: DeviceInfo
+    let log: Logger
     private let attestation: Attestation
 
     /// Longest a request waits for enrollment before going out unattested.
     private let enrollmentWait: TimeInterval
+
+    /// Deadline for the paywall fetch: the money path resolves fast and
+    /// falls back rather than blocking a paywall on a slow network.
+    let paywallTimeout: TimeInterval
+
+    /// StoreKit's AppTransaction environment ("Production" | "Sandbox" |
+    /// "Xcode"), resolved in the background after start(). Sent on paywall
+    /// fetches so TestFlight and dev traffic are visible in experiment
+    /// results; nil (omitted) until resolution lands.
+    private(set) var storeEnvironment: String?
 
     /// Seconds before retry n (0-indexed). Injectable so tests don't sleep.
     private let backoff: @Sendable (Int) -> TimeInterval
@@ -32,6 +47,7 @@ actor HogClient {
         device: DeviceInfo = .current(),
         isSimulator: Bool = DeviceInfo.isSimulator,
         enrollmentWait: TimeInterval = 10,
+        paywallTimeout: TimeInterval = 2.5,
         now: @escaping @Sendable () -> Date = { Date() },
         backoff: @escaping @Sendable (Int) -> TimeInterval = { pow(2, Double($0)) * 0.5 }
     ) {
@@ -41,6 +57,7 @@ actor HogClient {
         self.device = device
         self.backoff = backoff
         self.enrollmentWait = enrollmentWait
+        self.paywallTimeout = paywallTimeout
         let log = Logger(level: options.logLevel)
         self.log = log
         let dir = queueDirectory
@@ -70,6 +87,7 @@ actor HogClient {
     /// replays anything still queued from a previous launch.
     func start() async {
         ensureEnrollmentStarted()
+        startStoreEnvironmentResolution()
         await flush()
     }
 
@@ -78,6 +96,12 @@ actor HogClient {
         guard !trimmed.isEmpty else {
             log.warn("identify called with empty userId, ignored")
             return
+        }
+        if storage.userId != trimmed {
+            // The appUserId sent on paywall fetches is how purchases join
+            // experiment results; a cached answer from the old identity
+            // would leave the new one unlinked.
+            storage.paywallCache = [:]
         }
         storage.userId = trimmed
         await send("/api/sdk/v1/identify", identifyPayload(attributes: attributes))
@@ -109,9 +133,11 @@ actor HogClient {
     }
 
     /// Forgets the identified user and anonymous id (e.g. on logout).
-    /// Device enrollment survives; it is not tied to a user.
+    /// Device enrollment survives; it is not tied to a user, and so does
+    /// the installId (it keys experiment assignment to the DEVICE).
     func reset() {
         storage.resetIdentity()
+        storage.paywallCache = [:]
         queue.clear()
         log.info("reset, new anonymous id issued")
     }
@@ -127,6 +153,29 @@ actor HogClient {
             pending.removeFirst()
         }
         queue.save(pending)
+    }
+
+    // MARK: - Store environment
+
+    /// Resolves the StoreKit environment once, off the hot path. Best-effort:
+    /// platforms and OS versions without AppTransaction simply omit the
+    /// field, which the server reads as Production.
+    private func startStoreEnvironmentResolution() {
+        guard storeEnvironment == nil else { return }
+        #if canImport(StoreKit)
+        if #available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *) {
+            Task.detached(priority: .utility) { [weak self] in
+                guard let result = try? await AppTransaction.shared,
+                      case .verified(let transaction) = result
+                else { return }
+                await self?.setStoreEnvironment(transaction.environment.rawValue)
+            }
+        }
+        #endif
+    }
+
+    func setStoreEnvironment(_ environment: String) {
+        storeEnvironment = environment
     }
 
     // MARK: - Attestation state
@@ -154,6 +203,13 @@ actor HogClient {
         attestationOutcome = outcome
         for continuation in waiters.values { continuation.resume() }
         waiters.removeAll()
+    }
+
+    /// The outcome as it stands RIGHT NOW, no waiting. The paywall path
+    /// uses this: on a fresh install the enrollment grace would block the
+    /// money path, and the quarantine path answers unattested calls fine.
+    func currentAttestation() -> AttestationOutcome {
+        attestationOutcome ?? .unattested(.pending)
     }
 
     /// Parks the caller until enrollment resolves or the deadline passes,
@@ -242,7 +298,7 @@ actor HogClient {
 
     /// Returns true when delivered (or permanently rejected; a request the
     /// server will never accept is dropped, not retried forever).
-    private func deliver(path: String, body: Data, attempts: Int) async -> Bool {
+    func deliver(path: String, body: Data, attempts: Int) async -> Bool {
         let url = options.baseURL.appendingPathComponent(path)
         var attempt = 0
         while attempt < attempts {

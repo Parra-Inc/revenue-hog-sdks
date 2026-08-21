@@ -25,17 +25,30 @@ internal data class Recorded(
 /**
  * Scriptable transport. Responses are consumed in order; once the script
  * runs dry every request succeeds with 200. Negative values simulate a
- * network error (IOException).
+ * network error (IOException). [bodies] feeds postForBody responses (the
+ * paywall path), consumed in order alongside the status script.
  */
 internal class FakeTransport(vararg script: Int) : Transport {
     private val script = script.toMutableList()
     val requests = mutableListOf<Recorded>()
+    val bodies = mutableListOf<String>()
 
     override fun post(url: String, body: String, headers: Map<String, String>): Int {
         requests.add(Recorded(url, body, headers))
         val next = if (script.isEmpty()) 200 else script.removeAt(0)
         if (next < 0) throw IOException("network down")
         return next
+    }
+
+    override fun postForBody(
+        url: String,
+        body: String,
+        headers: Map<String, String>,
+        timeoutMs: Int,
+    ): TransportResponse {
+        val status = post(url, body, headers)
+        val responseBody = if (bodies.isEmpty()) "" else bodies.removeAt(0)
+        return TransportResponse(status, responseBody)
     }
 }
 

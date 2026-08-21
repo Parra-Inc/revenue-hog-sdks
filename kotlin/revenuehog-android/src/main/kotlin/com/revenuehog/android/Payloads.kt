@@ -18,6 +18,35 @@ data class DeviceInfo(
 internal object Payloads {
     const val IDENTIFY_PATH = "/api/sdk/v1/identify"
     const val ATTRIBUTE_PATH = "/api/sdk/v1/attribute"
+    const val PAYWALL_PATH = "/api/sdk/v1/paywall"
+    const val IMPRESSION_PATH = "/api/sdk/v1/paywall/impression"
+
+    fun paywall(
+        appUserId: String,
+        bundleId: String,
+        installId: String,
+        entitlement: String,
+        forceVariant: String? = null,
+    ): JSONObject {
+        val json = JSONObject()
+            .put("appUserId", appUserId)
+            .put("bundleId", bundleId)
+            .put("installId", installId)
+            .put("entitlement", entitlement)
+        forceVariant?.let { json.put("forceVariant", it) }
+        return json
+    }
+
+    fun impression(
+        bundleId: String,
+        installId: String,
+        experimentId: String,
+        renderedSkus: List<String>,
+    ): JSONObject = JSONObject()
+        .put("bundleId", bundleId)
+        .put("installId", installId)
+        .put("experimentId", experimentId)
+        .put("renderedSkus", org.json.JSONArray(renderedSkus.take(50)))
 
     fun identify(
         appUserId: String,

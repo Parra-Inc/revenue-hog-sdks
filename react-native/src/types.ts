@@ -31,8 +31,48 @@ export interface RevenueHogConfig {
   storage?: StorageAdapter;
   /** Default `'warn'`. */
   logLevel?: LogLevel;
+  /**
+   * StoreKit environment for paywall experiment health
+   * (`'Production' | 'Sandbox' | 'Xcode'`). React Native cannot read
+   * AppTransaction, so pass it when you know it (e.g. a TestFlight build
+   * config); the server reads an absent value as Production.
+   */
+  storeEnvironment?: 'Production' | 'Sandbox' | 'Xcode';
   /** Test seam — custom fetch implementation. */
   fetch?: FetchLike;
+}
+
+export type PaywallSkuKind = 'subscription' | 'iap' | 'unknown';
+
+export interface PaywallSku {
+  productId: string;
+  kind: PaywallSkuKind;
+}
+
+/**
+ * The answer to "which SKUs should this paywall offer": an ORDERED list.
+ * Render in this order — under an experiment the order is part of what is
+ * being tested. Never absent: on any failure it carries the compiled-in
+ * fallback with `isFallback: true`.
+ */
+export interface Paywall {
+  entitlement: string;
+  skus: PaywallSku[];
+  /** The ordered product ids, ready for your store's product loader. */
+  productIds: string[];
+  /** Present while an A/B experiment is serving this install. */
+  experimentId?: string;
+  /** This install's variant, for the app's own analytics. */
+  variantKey?: string;
+  isFallback: boolean;
+}
+
+export interface PaywallOptions {
+  /**
+   * QA preview of a named variant. Honored by the server only for
+   * non-Production store environments; never cached, never recorded.
+   */
+  forceVariant?: string;
 }
 
 export interface AttributePurchaseInput {
@@ -81,4 +121,6 @@ export type FetchLike = (
     headers: Record<string, string>;
     body: string;
   }
-) => Promise<{ status: number }>;
+  // `text` is optional so old mocks stay valid; the real fetch Response
+  // satisfies it structurally. Only the paywall path reads a body.
+) => Promise<{ status: number; text?: () => Promise<string> }>;

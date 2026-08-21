@@ -24,9 +24,12 @@ final class DefaultsStore: KeyValueStore, @unchecked Sendable {
 }
 
 #if canImport(Security)
-/// Keychain-backed store for the two values worth protecting: the device
-/// token and the App Attest key id. Generic passwords under one service,
-/// no access group, `AfterFirstUnlock` so early launches can read them.
+/// Keychain-backed store for the values worth protecting: the device token,
+/// the App Attest key id, and the install id. Generic passwords under one
+/// service, no access group, `AfterFirstUnlockThisDeviceOnly` and explicitly
+/// non-synchronizable: everything here is DEVICE state — App Attest keys are
+/// hardware-bound, and a synced or restored installId would clone one
+/// experiment assignment across two devices.
 final class KeychainStore: KeyValueStore, @unchecked Sendable {
     private let service: String
 
@@ -53,7 +56,7 @@ final class KeychainStore: KeyValueStore, @unchecked Sendable {
         let data = Data(value.utf8)
         var add = baseQuery(key)
         add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         if SecItemAdd(add as CFDictionary, nil) == errSecDuplicateItem {
             SecItemUpdate(
                 baseQuery(key) as CFDictionary,
@@ -67,6 +70,7 @@ final class KeychainStore: KeyValueStore, @unchecked Sendable {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
+            kSecAttrSynchronizable as String: false,
         ]
     }
 }
@@ -131,6 +135,39 @@ struct Storage: Sendable {
     var attestKeyId: String? {
         get { secure.get("rh_attest_key_id") }
         nonmutating set { secure.set(newValue, forKey: "rh_attest_key_id") }
+    }
+
+    /// One UUID per install, minted lazily and kept in the Keychain so it
+    /// survives reinstalls. It exists ONLY so paywall experiment assignment
+    /// sticks to this device; it is not an identity and survives `reset()`.
+    /// The Keychain items are non-synchronizable and device-only (see
+    /// KeychainStore): an iCloud-synced installId would clone one
+    /// assignment across a person's devices.
+    var installId: String {
+        if let existing = secure.get("rh_install_id") { return existing }
+        let fresh = UUID().uuidString
+        secure.set(fresh, forKey: "rh_install_id")
+        return fresh
+    }
+
+    /// Per-entitlement paywall answers (see CachedPaywall in Paywall.swift).
+    /// Lives in defaults, not the Keychain: it is a config cache, and a
+    /// reinstall SHOULD refetch.
+    var paywallCache: [String: CachedPaywall] {
+        get {
+            guard let raw = store.get("rh_paywall_cache")?.data(using: .utf8),
+                  let map = try? JSONDecoder().decode([String: CachedPaywall].self, from: raw)
+            else { return [:] }
+            return map
+        }
+        nonmutating set {
+            if newValue.isEmpty {
+                store.set(nil, forKey: "rh_paywall_cache")
+                return
+            }
+            let data = try? JSONEncoder().encode(newValue)
+            store.set(data.flatMap { String(data: $0, encoding: .utf8) }, forKey: "rh_paywall_cache")
+        }
     }
 
     /// Enrollment is not retried before this instant (set after the server

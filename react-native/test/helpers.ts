@@ -13,8 +13,15 @@ export interface MockFetch {
   requests: Recorded[];
 }
 
-/** Statuses are consumed in order; once the script runs dry, everything is 200. */
-export function mockFetch(script: Array<number | 'network-error'> = []): MockFetch {
+export type ScriptedResponse =
+  | number
+  | 'network-error'
+  /** Never answers: the slow-network case the paywall timeout races. */
+  | 'hang'
+  | { status: number; json: string };
+
+/** Responses are consumed in order; once the script runs dry, everything is 200. */
+export function mockFetch(script: ScriptedResponse[] = []): MockFetch {
   const requests: Recorded[] = [];
   const fetchFn: FetchLike = async (url, init) => {
     requests.push({
@@ -22,9 +29,13 @@ export function mockFetch(script: Array<number | 'network-error'> = []): MockFet
       headers: init.headers,
       body: JSON.parse(init.body) as Record<string, unknown>,
     });
-    const next = script.length > 0 ? script.shift() : 200;
+    const next = script.length > 0 ? (script.shift() as ScriptedResponse) : 200;
     if (next === 'network-error') throw new TypeError('Network request failed');
-    return { status: next as number };
+    if (next === 'hang') return new Promise(() => {});
+    if (typeof next === 'object') {
+      return { status: next.status, text: async () => next.json };
+    }
+    return { status: next };
   };
   return { fetch: fetchFn, requests };
 }

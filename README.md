@@ -76,21 +76,74 @@ Android today) still work and are labeled unverified in the dashboard.
 Self-hosting or developing locally? Every SDK takes a base-URL override in
 its configure options.
 
+## Server-driven paywall SKUs
+
+The RevenueHog dashboard can decide WHICH products your paywall offers (and
+A/B test the offer set) without an app update. Your app keeps its paywall
+UI; the SDK answers with an ordered SKU list and can never come back empty:
+fresh cache, then a short network fetch, then stale cache, then the
+compiled-in fallback you pass at the call site.
+
+**Swift**:
+
+```swift
+let paywall = await RevenueHog.paywall(
+    for: "pro", fallback: ["com.example.pro.annual", "com.example.pro.monthly"]
+)
+let products = try await paywall.products() // loaded AND re-sorted to menu order
+// … render …
+RevenueHog.paywallShown(paywall, rendered: products.map(\.id))
+```
+
+**React Native**:
+
+```ts
+const paywall = await RevenueHog.paywall('pro', ['com.example.pro.annual']);
+// load paywall.productIds through your IAP library, render in that order
+await RevenueHog.paywallShown(paywall, renderedProductIds);
+```
+
+**Android** (callback runs on the SDK thread; hop to main before rendering):
+
+```kotlin
+RevenueHog.paywall("pro", listOf("com.example.pro.annual")) { paywall ->
+    // load paywall.productIds through Play Billing, render in that order
+    RevenueHog.paywallShown(paywall, renderedProductIds)
+}
+```
+
+Rules that are the contract, not suggestions: render in the returned order
+(StoreKit's `Product.products(for:)` comes back unordered and the order is
+part of what gets tested); call `paywallShown` when the paywall actually
+appears, after product loading, so experiments count real exposures; keep
+attributing purchases — attribution is what makes an experiment measurable.
+The cache invalidates itself on `identify`/`reset`. QA can preview a variant
+with the `forceVariant` option (honored only for non-production traffic,
+never recorded).
+
 ## API contract
 
-All three SDKs speak the same two endpoints:
+All three SDKs speak the same endpoints:
 
 ```
 POST /api/sdk/v1/attest/challenge   {} -> { challenge }            (iOS enrollment)
 POST /api/sdk/v1/attest             { keyId, attestation, challenge, bundleId } -> { deviceToken }
 POST /api/sdk/v1/identify   { appUserId, bundleId, platform, osVersion?, deviceModel?, locale?, attributes? }
 POST /api/sdk/v1/attribute  { appUserId, bundleId, originalTransactionId, productId?, jws? }
+POST /api/sdk/v1/paywall    { appUserId, bundleId, installId, entitlement, environment?, forceVariant? }
+                            -> { entitlement, skus: [{ productId, kind }], experimentId?, variantKey?, ttlSeconds }
+POST /api/sdk/v1/paywall/impression { bundleId, installId, experimentId, renderedSkus }
 Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 
-Both write endpoints are idempotent. `401` = bad device token (re-enroll
+The write endpoints are idempotent. `401` = bad device token (re-enroll
 once), `429` = rate limited (backoff + queue). On iOS, `jws` carries the
 StoreKit 2 signed transaction so the purchase link verifies even unattested.
+`installId` is a per-install UUID the SDK mints and persists (iOS: a
+non-synchronizable Keychain item that survives reinstalls) so experiment
+assignment sticks to the device; an empty `skus` answer means "render your
+compiled-in fallback". On iOS the SDK also sends StoreKit's AppTransaction
+environment so TestFlight traffic is visible in experiment results.
 
 ## Repo layout
 

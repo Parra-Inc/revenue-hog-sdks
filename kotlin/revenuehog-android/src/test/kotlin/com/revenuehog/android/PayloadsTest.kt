@@ -41,6 +41,8 @@ class PayloadsTest {
         assertEquals("com.example.app", json.getString("bundleId"))
         assertEquals("gpa.1234-5678", json.getString("originalTransactionId"))
         assertEquals("pro_monthly", json.getString("productId"))
+        // Declares the store so the server links the token to the Play app.
+        assertEquals("android", json.getString("platform"))
     }
 
     @Test

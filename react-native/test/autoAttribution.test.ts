@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jwsFromPurchase } from '../src/autoAttribution';
+import { jwsFromPurchase, transactionIdFromPurchase } from '../src/autoAttribution';
 
 const JWS = 'eyJhbGciOiJFUzI1NiJ9.eyJidW5kbGVJZCI6ImNvbS5leGFtcGxlLmFwcCJ9.c2ln';
 
@@ -24,5 +24,22 @@ describe('jwsFromPurchase', () => {
   it('is undefined for Android purchases and empty objects', () => {
     expect(jwsFromPurchase({})).toBeUndefined();
     expect(jwsFromPurchase(undefined)).toBeUndefined();
+  });
+});
+
+describe('transactionIdFromPurchase', () => {
+  it('uses the Play purchase token on Android, not the per-renewal order id', () => {
+    expect(
+      transactionIdFromPurchase({ transactionId: 'GPA.1234-5678-9012-34567', purchaseToken: 'tok_play' })
+    ).toBe('tok_play');
+    expect(transactionIdFromPurchase({ transactionId: 'GPA.1', purchaseTokenAndroid: 'tok_old' })).toBe('tok_old');
+  });
+
+  it('keeps the original transaction id on iOS', () => {
+    expect(
+      transactionIdFromPurchase({ transactionId: '2000000999', originalTransactionIdentifierIOS: '2000000001' })
+    ).toBe('2000000001');
+    expect(transactionIdFromPurchase({ transactionId: '2000000999' })).toBe('2000000999');
+    expect(transactionIdFromPurchase(undefined)).toBeUndefined();
   });
 });

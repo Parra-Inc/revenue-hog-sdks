@@ -4,6 +4,10 @@ import type { Logger } from './logger';
 export interface IapPurchase {
   transactionId?: string;
   originalTransactionIdentifierIOS?: string;
+  /** Android: the Play purchase token (react-native-iap >= 12). */
+  purchaseToken?: string;
+  /** Android: the same token under its older react-native-iap name. */
+  purchaseTokenAndroid?: string;
   productId?: string;
   /** react-native-iap ≥ 13 (StoreKit 2 mode). */
   jwsRepresentationIos?: string;
@@ -36,8 +40,7 @@ export function tryHookReactNativeIap(
 
     const subscription = iap.purchaseUpdatedListener((purchase) => {
       try {
-        const txn =
-          purchase?.originalTransactionIdentifierIOS ?? purchase?.transactionId;
+        const txn = transactionIdFromPurchase(purchase);
         if (!txn) return;
         void client.attributePurchase({
           originalTransactionId: txn,
@@ -60,6 +63,19 @@ export function tryHookReactNativeIap(
     // react-native-iap not installed — auto-attribution silently off
     return undefined;
   }
+}
+
+/**
+ * The id RevenueHog links a purchase by. On iOS, the original transaction id.
+ * On Android, the Play purchase token: stable across renewals and the key
+ * Google Play's notifications carry. react-native-iap's Android
+ * `transactionId` is the ORDER id, which changes with every renewal, so it
+ * would never join the subscription's events.
+ */
+export function transactionIdFromPurchase(purchase: IapPurchase | undefined): string | undefined {
+  const playToken = purchase?.purchaseToken ?? purchase?.purchaseTokenAndroid;
+  if (playToken && !purchase?.originalTransactionIdentifierIOS) return playToken;
+  return purchase?.originalTransactionIdentifierIOS ?? purchase?.transactionId;
 }
 
 /**

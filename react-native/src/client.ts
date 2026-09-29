@@ -354,6 +354,7 @@ export class HogClient {
     const payload: AttributePayload = {
       appUserId: user,
       bundleId: this.device.bundleId ?? 'unknown',
+      platform: this.device.platform,
       originalTransactionId: txn,
       ...(input.productId ? { productId: input.productId } : {}),
       ...(input.jws ? { jws: input.jws } : {}),

@@ -104,6 +104,8 @@ export interface IdentifyPayload {
 export interface AttributePayload {
   appUserId: string;
   bundleId: string;
+  /** Tells the server which store the id belongs to (Play token vs Apple id). */
+  platform?: 'ios' | 'android';
   originalTransactionId: string;
   productId?: string;
   jws?: string;

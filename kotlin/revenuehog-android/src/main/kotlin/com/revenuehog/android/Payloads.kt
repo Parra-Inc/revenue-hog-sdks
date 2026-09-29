@@ -77,6 +77,9 @@ internal object Payloads {
         val json = JSONObject()
             .put("appUserId", appUserId)
             .put("bundleId", bundleId)
+            // Tells the server the id is a Play purchase token, so it links the
+            // purchase to the Google Play app's subscription lineage.
+            .put("platform", "android")
             .put("originalTransactionId", originalTransactionId)
         productId?.let { json.put("productId", it) }
         return json

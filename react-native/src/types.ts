@@ -119,13 +119,18 @@ export interface ChurnSurvey {
   options: ChurnSurveyOption[];
   otherEnabled: boolean;
   otherPlaceholder: string;
+  /**
+   * Show an optional free-text field that goes with any answer. When false
+   * the field is hidden and additional info is never sent.
+   */
+  allowAdditionalInfo: boolean;
   /** Keys in shown order, "other" last when enabled. Sent with the answer. */
   shownOrder: string[];
 }
 
 export type ChurnSurveyResult =
-  | { type: 'option'; key: string }
-  | { type: 'other'; text: string }
+  | { type: 'option'; key: string; additionalInfo?: string }
+  | { type: 'other'; text: string; additionalInfo?: string }
   | { type: 'skipped' }
   | { type: 'notShown' };
 

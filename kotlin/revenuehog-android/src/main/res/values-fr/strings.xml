@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">Autre</string>
     <string name="revenuehog_churn_survey_skip">Passer</string>
     <string name="revenuehog_churn_survey_send">Envoyer</string>
+    <string name="revenuehog_churn_survey_additional_info">Dites-nous en plus (facultatif)</string>
 </resources>

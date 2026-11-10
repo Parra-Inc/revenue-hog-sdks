@@ -149,6 +149,22 @@ describe('churn survey client', () => {
     expect(posts[0].body.surveyVersion).toBe(3);
     expect(posts[0].body.productId).toBe('pro.monthly');
     expect(posts[1].body.skipped).toBe(true);
+    expect(survey.allowAdditionalInfo).toBe(false);
+  });
+
+  it('sends additional info only when the survey allows it', async () => {
+    const on = JSON.stringify({ show: true, survey: { ...SURVEY.survey, allowAdditionalInfo: true } });
+    const transport = mockFetch([{ status: 200, json: on }]);
+    const { client } = makeClient(transport);
+    const survey = (await client.churnSurvey())!;
+    expect(survey.allowAdditionalInfo).toBe(true);
+    await client.submitChurnSurvey(survey, { type: 'option', key: 'not_using', additionalInfo: ' Yearly please ' });
+    await client.submitChurnSurvey({ ...survey, allowAdditionalInfo: false }, { type: 'option', key: 'not_using', additionalInfo: 'x' });
+    await client.submitChurnSurvey(survey, { type: 'other', text: 'Seasonal', additionalInfo: '   ' });
+    const posts = transport.requests.filter((r) => r.url.endsWith('/churn-survey/response'));
+    expect(posts[0].body.additionalInfo).toBe('Yearly please');
+    expect('additionalInfo' in posts[1].body).toBe(false);
+    expect('additionalInfo' in posts[2].body).toBe(false);
   });
 });
 

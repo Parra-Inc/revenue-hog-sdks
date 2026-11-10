@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">أخرى</string>
     <string name="revenuehog_churn_survey_skip">تخطي</string>
     <string name="revenuehog_churn_survey_send">إرسال</string>
+    <string name="revenuehog_churn_survey_additional_info">أخبرنا بالمزيد (اختياري)</string>
 </resources>

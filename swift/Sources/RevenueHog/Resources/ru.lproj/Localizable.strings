@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Пропустить";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Отправить";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Расскажите подробнее (необязательно)";

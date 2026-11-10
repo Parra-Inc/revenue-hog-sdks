@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">Другое</string>
     <string name="revenuehog_churn_survey_skip">Пропустить</string>
     <string name="revenuehog_churn_survey_send">Отправить</string>
+    <string name="revenuehog_churn_survey_additional_info">Расскажите подробнее (необязательно)</string>
 </resources>

@@ -1,5 +1,6 @@
 /**
- * Button labels for the built-in churn survey ("Other", "Skip", "Send").
+ * Labels for the built-in churn survey ("Other", "Skip", "Send" and the
+ * optional additional info placeholder).
  * The same strings ship in the Swift (Bundle.module .strings) and Kotlin
  * (res/values-xx) SDKs so the three built-in surveys read the same.
  * The server payload does not carry these labels today; the survey title,
@@ -9,26 +10,28 @@ export interface ChurnSurveyLabels {
   other: string;
   skip: string;
   send: string;
+  /** Placeholder for the optional additional info field. */
+  additionalInfo: string;
 }
 
 export const CHURN_SURVEY_LABELS: Record<string, ChurnSurveyLabels> = {
-  en: { other: 'Other', skip: 'Skip', send: 'Send' },
-  ar: { other: 'أخرى', skip: 'تخطي', send: 'إرسال' },
-  de: { other: 'Andere', skip: 'Überspringen', send: 'Senden' },
-  es: { other: 'Otro', skip: 'Omitir', send: 'Enviar' },
-  fr: { other: 'Autre', skip: 'Passer', send: 'Envoyer' },
-  it: { other: 'Altro', skip: 'Salta', send: 'Invia' },
-  ja: { other: 'その他', skip: 'スキップ', send: '送信' },
-  ko: { other: '기타', skip: '건너뛰기', send: '보내기' },
-  nl: { other: 'Anders', skip: 'Overslaan', send: 'Verzenden' },
-  pl: { other: 'Inne', skip: 'Pomiń', send: 'Wyślij' },
-  'pt-BR': { other: 'Outro', skip: 'Pular', send: 'Enviar' },
-  pt: { other: 'Outro', skip: 'Ignorar', send: 'Enviar' },
-  ru: { other: 'Другое', skip: 'Пропустить', send: 'Отправить' },
-  sv: { other: 'Annat', skip: 'Hoppa över', send: 'Skicka' },
-  tr: { other: 'Diğer', skip: 'Atla', send: 'Gönder' },
-  'zh-Hans': { other: '其他', skip: '跳过', send: '发送' },
-  'zh-Hant': { other: '其他', skip: '略過', send: '傳送' },
+  en: { other: 'Other', skip: 'Skip', send: 'Send', additionalInfo: 'Tell us more (optional)' },
+  ar: { other: 'أخرى', skip: 'تخطي', send: 'إرسال', additionalInfo: 'أخبرنا بالمزيد (اختياري)' },
+  de: { other: 'Andere', skip: 'Überspringen', send: 'Senden', additionalInfo: 'Erzählen Sie uns mehr (optional)' },
+  es: { other: 'Otro', skip: 'Omitir', send: 'Enviar', additionalInfo: 'Cuéntanos más (opcional)' },
+  fr: { other: 'Autre', skip: 'Passer', send: 'Envoyer', additionalInfo: 'Dites-nous en plus (facultatif)' },
+  it: { other: 'Altro', skip: 'Salta', send: 'Invia', additionalInfo: 'Dicci di più (facoltativo)' },
+  ja: { other: 'その他', skip: 'スキップ', send: '送信', additionalInfo: '詳しく教えてください（任意）' },
+  ko: { other: '기타', skip: '건너뛰기', send: '보내기', additionalInfo: '자세히 알려주세요 (선택 사항)' },
+  nl: { other: 'Anders', skip: 'Overslaan', send: 'Verzenden', additionalInfo: 'Vertel ons meer (optioneel)' },
+  pl: { other: 'Inne', skip: 'Pomiń', send: 'Wyślij', additionalInfo: 'Powiedz nam więcej (opcjonalnie)' },
+  'pt-BR': { other: 'Outro', skip: 'Pular', send: 'Enviar', additionalInfo: 'Conte mais para nós (opcional)' },
+  pt: { other: 'Outro', skip: 'Ignorar', send: 'Enviar', additionalInfo: 'Diga-nos mais (opcional)' },
+  ru: { other: 'Другое', skip: 'Пропустить', send: 'Отправить', additionalInfo: 'Расскажите подробнее (необязательно)' },
+  sv: { other: 'Annat', skip: 'Hoppa över', send: 'Skicka', additionalInfo: 'Berätta mer (valfritt)' },
+  tr: { other: 'Diğer', skip: 'Atla', send: 'Gönder', additionalInfo: 'Biraz daha anlatın (isteğe bağlı)' },
+  'zh-Hans': { other: '其他', skip: '跳过', send: '发送', additionalInfo: '详细说说（选填）' },
+  'zh-Hant': { other: '其他', skip: '略過', send: '傳送', additionalInfo: '詳細說說（選填）' },
 };
 
 const TRADITIONAL_REGIONS = new Set(['TW', 'HK', 'MO']);
@@ -69,6 +72,7 @@ export function churnSurveyLabels(
   return {
     other: overrides?.other || base.other,
     skip: overrides?.skip || base.skip,
+    additionalInfo: overrides?.additionalInfo || base.additionalInfo,
     send: overrides?.send || base.send,
   };
 }

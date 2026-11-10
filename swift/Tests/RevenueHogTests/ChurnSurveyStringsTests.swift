@@ -6,6 +6,8 @@ final class ChurnSurveyStringsTests: XCTestCase {
         XCTAssertEqual(ChurnSurveyStrings.localized("churn_survey.other", "x", localization: "en"), "Other")
         XCTAssertEqual(ChurnSurveyStrings.localized("churn_survey.skip", "x", localization: "en"), "Skip")
         XCTAssertEqual(ChurnSurveyStrings.localized("churn_survey.send", "x", localization: "en"), "Send")
+        XCTAssertEqual(ChurnSurveyStrings.localized("churn_survey.additional_info", "x", localization: "en"), "Tell us more (optional)")
+        XCTAssertEqual(ChurnSurveyStrings.localized("churn_survey.additional_info", "x", localization: "de"), "Erzählen Sie uns mehr (optional)")
     }
 
     func testBundledTranslations() {
@@ -19,7 +21,7 @@ final class ChurnSurveyStringsTests: XCTestCase {
         let locales = ["ar", "de", "en", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt-BR", "pt-PT",
                        "ru", "sv", "tr", "zh-Hans", "zh-Hant"]
         for locale in locales {
-            for key in ["churn_survey.other", "churn_survey.skip", "churn_survey.send"] {
+            for key in ["churn_survey.other", "churn_survey.skip", "churn_survey.send", "churn_survey.additional_info"] {
                 let value = ChurnSurveyStrings.localized(key, "MISSING", localization: locale)
                 XCTAssertNotEqual(value, "MISSING", "\(locale) \(key)")
                 XCTAssertNotEqual(value, key, "\(locale) \(key)")

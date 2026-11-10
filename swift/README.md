@@ -92,7 +92,7 @@ Apple's sandbox automatically, so `production` is always the right value.
 | `RevenueHog.setAttributes(_:)` | Attaches a flat `[String: String]` map to the user's profile (plan, cohort, …). |
 | `RevenueHog.attributePurchase(originalTransactionId:productId:)` | Manual attribution. Only needed when auto-attribution is off. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Device enrollment survives. |
-| `RevenueHog.presentChurnSurvey(productId:)` | Shows the churn survey sheet now and records the answer. Returns `.option(key)`, `.other(text)`, `.skipped` or `.notShown`. |
+| `RevenueHog.presentChurnSurvey(productId:)` | Shows the churn survey sheet now and records the answer. Returns `.option(key, additionalInfo:)`, `.other(text, additionalInfo:)`, `.skipped` or `.notShown`. `additionalInfo` is the optional "Tell us more" text, set only when the survey's Allow additional info setting is on. |
 
 ### Options
 

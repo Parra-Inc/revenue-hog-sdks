@@ -110,6 +110,29 @@ class ChurnSurveyTest {
     }
 
     @Test
+    fun additionalInfoOnlyWhenAllowed() {
+        val transport = FakeTransport()
+        transport.getBodies.add(surveyJson.replace("\"randomize\":true", "\"allowAdditionalInfo\":true,\"randomize\":true"))
+        val client = TestSupport.makeClient(transport)
+        var survey: ChurnSurvey? = null
+        client.churnSurvey(false) { survey = it }
+        assertTrue(survey!!.allowAdditionalInfo)
+        client.submitChurnSurvey(survey!!, ChurnSurveyResult.Option("not_using", "  Yearly please "), null)
+        client.submitChurnSurvey(survey!!.copy(allowAdditionalInfo = false), ChurnSurveyResult.Option("not_using", "x"), null)
+        client.submitChurnSurvey(survey!!, ChurnSurveyResult.Other("Seasonal", "   "), null)
+        val posts = transport.requests.filter { it.url.endsWith("/churn-survey/response") }
+        assertEquals("Yearly please", posts[0].json.getString("additionalInfo"))
+        assertTrue(!posts[1].json.has("additionalInfo"))
+        assertTrue(!posts[2].json.has("additionalInfo"))
+    }
+
+    @Test
+    fun additionalInfoDefaultsOff() {
+        val parsed = ChurnSurveyRules.parse(org.json.JSONObject(surveyJson).getJSONObject("survey"))
+        assertTrue(parsed != null && !parsed.survey.allowAdditionalInfo)
+    }
+
+    @Test
     fun dailyOpenOncePerUtcDay() {
         val transport = FakeTransport()
         var now = 1_800_000_000_000L

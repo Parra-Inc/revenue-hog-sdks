@@ -3,7 +3,8 @@ import SwiftUI
 import UIKit
 
 /// The built-in churn survey sheet: a single-choice list with an optional
-/// "Other" text field, Skip and Send.
+/// "Other" text field, an optional additional info field when the survey
+/// allows it, Skip and Send.
 @available(iOS 15.0, tvOS 15.0, *)
 struct ChurnSurveyView: View {
     let survey: ChurnSurvey
@@ -11,6 +12,7 @@ struct ChurnSurveyView: View {
 
     @State private var selection: String?
     @State private var otherText = ""
+    @State private var additionalInfo = ""
 
     private var canSend: Bool {
         guard let selection else { return false }
@@ -32,6 +34,12 @@ struct ChurnSurveyView: View {
                         if selection == ChurnSurveyRules.otherKey {
                             TextField(survey.otherPlaceholder, text: $otherText)
                         }
+                    }
+                }
+                if survey.allowAdditionalInfo, selection != nil {
+                    Section {
+                        TextField(ChurnSurveyStrings.additionalInfo, text: $additionalInfo)
+                            .accessibilityLabel(ChurnSurveyStrings.additionalInfo)
                     }
                 }
             }
@@ -66,10 +74,11 @@ struct ChurnSurveyView: View {
 
     private func send() {
         guard let selection else { return }
+        let info = survey.allowAdditionalInfo ? additionalInfo : nil
         if selection == ChurnSurveyRules.otherKey {
-            onFinish(.other(otherText))
+            onFinish(.other(otherText, additionalInfo: info))
         } else {
-            onFinish(.option(selection))
+            onFinish(.option(selection, additionalInfo: info))
         }
     }
 }

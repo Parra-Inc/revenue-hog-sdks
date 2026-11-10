@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">Anders</string>
     <string name="revenuehog_churn_survey_skip">Overslaan</string>
     <string name="revenuehog_churn_survey_send">Verzenden</string>
+    <string name="revenuehog_churn_survey_additional_info">Vertel ons meer (optioneel)</string>
 </resources>

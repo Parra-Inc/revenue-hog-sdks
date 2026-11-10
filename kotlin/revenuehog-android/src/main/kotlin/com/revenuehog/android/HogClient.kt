@@ -164,14 +164,26 @@ internal class HogClient(
             .put("shownOrder", org.json.JSONArray(survey.shownOrder))
             .put("store", "google")
             .put("occurredAt", isoUtc(now()))
+        var extra: String? = null
         when (result) {
             is ChurnSurveyResult.NotShown -> return@run
-            is ChurnSurveyResult.Option -> json.put("optionKey", result.key)
+            is ChurnSurveyResult.Option -> {
+                json.put("optionKey", result.key)
+                extra = result.additionalInfo
+            }
             is ChurnSurveyResult.Other ->
-                if (result.text.isBlank()) json.put("skipped", true)
-                else json.put("otherText", result.text.trim().take(1000))
+                if (result.text.isBlank()) {
+                    json.put("skipped", true)
+                } else {
+                    json.put("otherText", result.text.trim().take(1000))
+                    extra = result.additionalInfo
+                }
             is ChurnSurveyResult.Skipped -> json.put("skipped", true)
         }
+        // Only with an answer, and only when the survey allows it: the server
+        // rejects additional info on a survey that has it turned off.
+        val info = extra?.trim().orEmpty()
+        if (survey.allowAdditionalInfo && info.isNotEmpty()) json.put("additionalInfo", info.take(1000))
         productId?.let { json.put("productId", it) }
         send(Payloads.CHURN_RESPONSE_PATH, json)
     }

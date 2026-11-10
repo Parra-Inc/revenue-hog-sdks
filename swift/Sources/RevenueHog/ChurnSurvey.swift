@@ -20,6 +20,9 @@ public struct ChurnSurvey: Equatable, Sendable {
     public let options: [ChurnSurveyOption]
     public let otherEnabled: Bool
     public let otherPlaceholder: String
+    /// Show an optional free-text field that goes with any answer. When
+    /// false the field is hidden and additional info is never sent.
+    public let allowAdditionalInfo: Bool
     /// Option keys in the order shown, "other" last when enabled. Sent back
     /// with the answer so position bias can be measured.
     public let shownOrder: [String]
@@ -29,10 +32,12 @@ public struct ChurnSurvey: Equatable, Sendable {
 
 /// What happened when the survey was presented.
 public enum ChurnSurveyResult: Equatable, Sendable {
-    /// The user picked one of the configured options.
-    case option(String)
-    /// The user picked "Other" and wrote this text.
-    case other(String)
+    /// The user picked one of the configured options, with optional
+    /// additional info when the survey allows it.
+    case option(String, additionalInfo: String? = nil)
+    /// The user picked "Other" and wrote this text, with optional additional
+    /// info when the survey allows it.
+    case other(String, additionalInfo: String? = nil)
     /// The survey appeared and was dismissed without an answer.
     case skipped
     /// Nothing appeared: no survey configured, disabled, outside the sample,
@@ -49,6 +54,7 @@ enum ChurnSurveyStrings {
     static var other: String { localized("churn_survey.other", "Other") }
     static var skip: String { localized("churn_survey.skip", "Skip") }
     static var send: String { localized("churn_survey.send", "Send") }
+    static var additionalInfo: String { localized("churn_survey.additional_info", "Tell us more (optional)") }
 
     /// The label for `key` in `localization` (an lproj name such as `de`),
     /// or in the user's preferred language when nil.
@@ -128,6 +134,7 @@ enum ChurnSurveyRules {
             options: ordered,
             otherEnabled: otherEnabled,
             otherPlaceholder: wire.other?.placeholder ?? "Tell us more",
+            allowAdditionalInfo: wire.allowAdditionalInfo ?? false,
             shownOrder: shownOrder(ordered, otherEnabled: otherEnabled),
             autoRenewTrigger: wire.trigger?.onAutoRenewOff ?? true,
             maxPerUserDays: wire.trigger?.maxPerUserDays ?? defaultMaxPerUserDays
@@ -193,13 +200,24 @@ extension HogClient {
         var optionKey: String?
         var otherText: String?
         var skipped: Bool?
+        var extra: String?
         switch result {
-        case .option(let key): optionKey = key
-        case .other(let text):
+        case .option(let key, let info):
+            optionKey = key
+            extra = info
+        case .other(let text, let info):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { skipped = true } else { otherText = String(trimmed.prefix(1000)) }
+            extra = info
         case .skipped: skipped = true
         case .notShown: return
+        }
+        // Only with an answer, and only when the survey allows it: the server
+        // rejects additional info on a survey that has it turned off.
+        var additionalInfo: String?
+        if survey.allowAdditionalInfo, skipped != true,
+           let trimmed = extra?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {
+            additionalInfo = String(trimmed.prefix(1000))
         }
         let payload = ChurnAnswerPayload(
             bundleId: device.bundleId,
@@ -208,6 +226,7 @@ extension HogClient {
             responseId: UUID().uuidString.lowercased(),
             optionKey: optionKey,
             otherText: otherText,
+            additionalInfo: additionalInfo,
             skipped: skipped,
             surveyVersion: survey.version,
             shownOrder: survey.shownOrder,

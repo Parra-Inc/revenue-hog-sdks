@@ -4,3 +4,5 @@
 "churn_survey.skip" = "スキップ";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "送信";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "詳しく教えてください（任意）";

@@ -6,12 +6,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Every bundled locale carries all three churn survey labels. */
+/** Every bundled locale carries every churn survey label. */
 class ChurnSurveyStringsTest {
     private val keys = setOf(
         "revenuehog_churn_survey_other",
         "revenuehog_churn_survey_skip",
         "revenuehog_churn_survey_send",
+        "revenuehog_churn_survey_additional_info",
     )
 
     private fun strings(dir: File): Map<String, String> {
@@ -41,5 +42,6 @@ class ChurnSurveyStringsTest {
         assertEquals("Other", s["revenuehog_churn_survey_other"])
         assertEquals("Skip", s["revenuehog_churn_survey_skip"])
         assertEquals("Send", s["revenuehog_churn_survey_send"])
+        assertEquals("Tell us more (optional)", s["revenuehog_churn_survey_additional_info"])
     }
 }

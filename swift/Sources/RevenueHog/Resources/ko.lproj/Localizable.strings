@@ -4,3 +4,5 @@
 "churn_survey.skip" = "건너뛰기";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "보내기";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "자세히 알려주세요 (선택 사항)";

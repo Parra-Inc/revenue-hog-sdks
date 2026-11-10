@@ -149,9 +149,9 @@ POST /api/sdk/v1/paywall    { appUserId, bundleId, installId, entitlement, envir
 POST /api/sdk/v1/paywall/impression { bundleId, installId, experimentId, renderedSkus }
 POST /api/sdk/v1/open       { appUserId, bundleId, platform, osVersion?, deviceModel?, locale? }
 GET  /api/sdk/v1/churn-survey?bundleId&platform&appUserId&locale
-                            -> { survey: { version, title, options, other, randomize, trigger, sampleRate } | null, show, reason? }
+                            -> { survey: { version, title, options, other, randomize, allowAdditionalInfo, trigger, sampleRate } | null, show, reason? }
 POST /api/sdk/v1/churn-survey/response { bundleId, platform, appUserId, responseId, optionKey | otherText | skipped,
-                            surveyVersion, shownOrder, productId?, store?, environment?, occurredAt }
+                            additionalInfo? (only when allowAdditionalInfo), surveyVersion, shownOrder, productId?, store?, environment?, occurredAt }
 Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 

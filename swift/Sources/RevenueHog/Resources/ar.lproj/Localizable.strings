@@ -4,3 +4,5 @@
 "churn_survey.skip" = "تخطي";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "إرسال";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "أخبرنا بالمزيد (اختياري)";

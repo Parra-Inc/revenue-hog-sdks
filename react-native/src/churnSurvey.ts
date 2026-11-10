@@ -110,6 +110,7 @@ export function parseSurvey(raw: unknown, rand: () => number = Math.random): Par
       otherEnabled,
       otherPlaceholder:
         typeof other.placeholder === 'string' && other.placeholder ? other.placeholder : 'Tell us more',
+      allowAdditionalInfo: r.allowAdditionalInfo === true,
       shownOrder: shownOrder(ordered, otherEnabled),
     },
     autoRenewTrigger: trigger.onAutoRenewOff !== false,

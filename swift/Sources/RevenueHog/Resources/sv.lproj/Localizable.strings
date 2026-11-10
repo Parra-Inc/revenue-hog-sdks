@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Hoppa över";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Skicka";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Berätta mer (valfritt)";

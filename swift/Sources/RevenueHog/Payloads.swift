@@ -50,6 +50,7 @@ struct ChurnSurveyResponsePayload: Decodable {
         var options: [WireOption]?
         var other: WireOther?
         var randomize: Bool?
+        var allowAdditionalInfo: Bool?
         var trigger: WireTrigger?
         var sampleRate: Double?
     }
@@ -69,6 +70,8 @@ struct ChurnAnswerPayload: Codable, Equatable {
     var responseId: String
     var optionKey: String?
     var otherText: String?
+    /// Optional text that goes with any answer; only when the survey allows it.
+    var additionalInfo: String?
     var skipped: Bool?
     var surveyVersion: Int
     var shownOrder: [String]

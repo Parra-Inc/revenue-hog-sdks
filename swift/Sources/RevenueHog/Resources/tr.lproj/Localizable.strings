@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Atla";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Gönder";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Biraz daha anlatın (isteğe bağlı)";

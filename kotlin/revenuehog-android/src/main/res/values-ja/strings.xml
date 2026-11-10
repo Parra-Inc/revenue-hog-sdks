@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">その他</string>
     <string name="revenuehog_churn_survey_skip">スキップ</string>
     <string name="revenuehog_churn_survey_send">送信</string>
+    <string name="revenuehog_churn_survey_additional_info">詳しく教えてください（任意）</string>
 </resources>

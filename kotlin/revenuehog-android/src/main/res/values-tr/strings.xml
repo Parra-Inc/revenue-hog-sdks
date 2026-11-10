@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">Diğer</string>
     <string name="revenuehog_churn_survey_skip">Atla</string>
     <string name="revenuehog_churn_survey_send">Gönder</string>
+    <string name="revenuehog_churn_survey_additional_info">Biraz daha anlatın (isteğe bağlı)</string>
 </resources>

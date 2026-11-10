@@ -21,6 +21,14 @@ All three SDKs (Swift package tag, `com.revenuehog:revenuehog-android`,
   (`Bundle.module`; the package now declares `defaultLocalization: "en"`).
   Kotlin: `res/values-xx` strings named `revenuehog_churn_survey_*`, which
   host apps can override.
+- Churn survey "Allow additional info": when the dashboard turns on
+  `allowAdditionalInfo`, the built-in survey on all three SDKs shows an
+  optional "Tell us more (optional)" field under any answer (localized into
+  the same 17 locales) and sends it as `additionalInfo`. When it is off the
+  field is hidden and nothing is sent. Swift `ChurnSurveyResult.option` and
+  `.other` and Kotlin `ChurnSurveyResult.Option` and `.Other` gain an
+  optional `additionalInfo`; React Native results gain `additionalInfo?`, and
+  `ChurnSurveyLabels` gains `additionalInfo`.
 
 ### Changed
 - React Native: the Android auto-renew-off check runs whenever

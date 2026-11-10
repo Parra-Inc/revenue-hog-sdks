@@ -126,6 +126,30 @@ final class ChurnSurveyTests: XCTestCase {
         XCTAssertEqual((post?.json["responseId"] as? String)?.isEmpty, false)
     }
 
+    func testAdditionalInfoIsSentOnlyWhenAllowed() async {
+        let on = surveyJSON.replacingOccurrences(of: #""randomize""#, with: #""allowAdditionalInfo":true,"randomize""#)
+        let transport = MockTransport(script: [.json(200, on)])
+        let client = TestSupport.makeClient(transport: transport)
+        let survey = await client.churnSurvey()!
+        XCTAssertTrue(survey.allowAdditionalInfo)
+        await client.submitChurnSurvey(survey, result: .option("not_using", additionalInfo: "  Yearly please "), productId: nil)
+        XCTAssertEqual(transport.recorded.last?.json["additionalInfo"] as? String, "Yearly please")
+        XCTAssertEqual(transport.recorded.last?.json["optionKey"] as? String, "not_using")
+
+        await client.submitChurnSurvey(survey, result: .other("Seasonal", additionalInfo: "   "), productId: nil)
+        XCTAssertNil(transport.recorded.last?.json["additionalInfo"])
+    }
+
+    func testAdditionalInfoIsNeverSentWhenOff() async {
+        let transport = MockTransport(script: [.json(200, surveyJSON)])
+        let client = TestSupport.makeClient(transport: transport)
+        let survey = await client.churnSurvey()!
+        XCTAssertFalse(survey.allowAdditionalInfo)
+        await client.submitChurnSurvey(survey, result: .option("not_using", additionalInfo: "Yearly please"), productId: nil)
+        XCTAssertNil(transport.recorded.last?.json["additionalInfo"])
+        XCTAssertEqual(transport.recorded.last?.json["optionKey"] as? String, "not_using")
+    }
+
     func testSkipIsRecordedAsSkipped() async {
         let transport = MockTransport(script: [.json(200, surveyJSON)])
         let client = TestSupport.makeClient(transport: transport)

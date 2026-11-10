@@ -284,6 +284,12 @@ export class HogClient {
       else if (result.type === 'other' && result.text.trim()) {
         answer = { otherText: result.text.trim().slice(0, 1000) };
       } else answer = { skipped: true };
+      // Only with an answer, and only when the survey allows it: the server
+      // rejects additional info on a survey that has it turned off.
+      const extra = 'additionalInfo' in result ? result.additionalInfo?.trim() : undefined;
+      if (survey.allowAdditionalInfo && !answer.skipped && extra) {
+        answer.additionalInfo = extra.slice(0, 1000);
+      }
       await this.send(CHURN_RESPONSE_PATH, {
         bundleId: this.device.bundleId ?? 'unknown',
         platform: this.device.platform,

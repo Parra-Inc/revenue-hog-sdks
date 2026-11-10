@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Salta";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Invia";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Dicci di più (facoltativo)";

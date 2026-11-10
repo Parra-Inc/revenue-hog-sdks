@@ -17,6 +17,7 @@ const survey: ChurnSurvey = {
   options: [{ key: 'too_expensive', title: 'Too expensive' }],
   otherEnabled: true,
   otherPlaceholder: 'Tell us more',
+  allowAdditionalInfo: false,
   shownOrder: ['too_expensive', 'other'],
 };
 
@@ -33,13 +34,16 @@ describe('churn survey labels', () => {
   });
 
   it('localizes and lets overrides win field by field', () => {
-    expect(churnSurveyLabels('fr')).toEqual({ other: 'Autre', skip: 'Passer', send: 'Envoyer' });
-    expect(churnSurveyLabels('fr', { send: 'Go', skip: '' })).toEqual({ other: 'Autre', skip: 'Passer', send: 'Go' });
+    const additionalInfo = 'Dites-nous en plus (facultatif)';
+    expect(churnSurveyLabels('fr')).toEqual({ other: 'Autre', skip: 'Passer', send: 'Envoyer', additionalInfo });
+    expect(churnSurveyLabels('fr', { send: 'Go', skip: '' })).toEqual({ other: 'Autre', skip: 'Passer', send: 'Go', additionalInfo });
+    expect(churnSurveyLabels('en').additionalInfo).toBe('Tell us more (optional)');
   });
 
-  it('every locale has all three labels', () => {
+  it('every locale has every label', () => {
+    expect(Object.keys(CHURN_SURVEY_LABELS)).toHaveLength(17);
     for (const labels of Object.values(CHURN_SURVEY_LABELS)) {
-      expect(labels.other && labels.skip && labels.send).toBeTruthy();
+      expect(labels.other && labels.skip && labels.send && labels.additionalInfo).toBeTruthy();
     }
   });
 });
@@ -57,6 +61,17 @@ describe('churn survey sheet logic', () => {
     expect(churnSurveyResultFor('other', ' meh ')).toEqual({ type: 'other', text: 'meh' });
     expect(churnSurveyResultFor('other', ' ')).toEqual({ type: 'skipped' });
     expect(churnSurveyResultFor(null, '')).toEqual({ type: 'skipped' });
+  });
+
+  it('attaches additional info to any answer, never to a skip', () => {
+    expect(churnSurveyResultFor('too_expensive', '', ' yearly please ')).toEqual({
+      type: 'option',
+      key: 'too_expensive',
+      additionalInfo: 'yearly please',
+    });
+    expect(churnSurveyResultFor('other', 'meh', 'more')).toEqual({ type: 'other', text: 'meh', additionalInfo: 'more' });
+    expect(churnSurveyResultFor('too_expensive', '', '   ')).toEqual({ type: 'option', key: 'too_expensive' });
+    expect(churnSurveyResultFor(null, '', 'x')).toEqual({ type: 'skipped' });
   });
 });
 

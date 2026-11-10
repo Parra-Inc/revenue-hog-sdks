@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">Annat</string>
     <string name="revenuehog_churn_survey_skip">Hoppa över</string>
     <string name="revenuehog_churn_survey_send">Skicka</string>
+    <string name="revenuehog_churn_survey_additional_info">Berätta mer (valfritt)</string>
 </resources>

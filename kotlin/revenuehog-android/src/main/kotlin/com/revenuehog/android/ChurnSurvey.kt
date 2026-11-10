@@ -12,6 +12,8 @@ data class ChurnSurveyOption(val key: String, val title: String)
  * The churn survey as it should render: [options] already in display order
  * (shuffled when the dashboard says so), with "Other" always last.
  * [shownOrder] is sent back with the answer so position bias can be measured.
+ * [allowAdditionalInfo] shows an optional free-text field that goes with any
+ * answer; when false the field is hidden and additional info is never sent.
  */
 data class ChurnSurvey(
     val version: Int,
@@ -20,12 +22,13 @@ data class ChurnSurvey(
     val otherEnabled: Boolean,
     val otherPlaceholder: String,
     val shownOrder: List<String>,
+    val allowAdditionalInfo: Boolean = false,
 )
 
 /** What happened when the survey was presented. */
 sealed class ChurnSurveyResult {
-    data class Option(val key: String) : ChurnSurveyResult()
-    data class Other(val text: String) : ChurnSurveyResult()
+    data class Option(val key: String, val additionalInfo: String? = null) : ChurnSurveyResult()
+    data class Other(val text: String, val additionalInfo: String? = null) : ChurnSurveyResult()
     object Skipped : ChurnSurveyResult()
 
     /** No survey configured, disabled, not sampled, capped, or not configured. */
@@ -115,6 +118,7 @@ internal object ChurnSurveyRules {
                 otherEnabled = otherEnabled,
                 otherPlaceholder = other?.optString("placeholder").orEmpty().ifEmpty { "Tell us more" },
                 shownOrder = shownOrder(ordered, otherEnabled),
+                allowAdditionalInfo = raw.optBoolean("allowAdditionalInfo", false),
             ),
             autoRenewTrigger = trigger?.optBoolean("onAutoRenewOff", true) ?: true,
             maxPerUserDays = trigger?.optInt("maxPerUserDays", DEFAULT_MAX_PER_USER_DAYS) ?: DEFAULT_MAX_PER_USER_DAYS,

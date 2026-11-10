@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Pomiń";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Wyślij";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Powiedz nam więcej (opcjonalnie)";

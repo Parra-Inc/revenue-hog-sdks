@@ -1,7 +1,8 @@
 /**
  * Optional built-in churn survey UI for React Native: a modal sheet with the
  * options in the order the server sent them (shuffled when the dashboard
- * says so), "Other" last with a text field, and Skip / Send, matching the
+ * says so), "Other" last with a text field, an optional additional info
+ * field when the survey allows it, and Skip / Send, matching the
  * Swift and Kotlin SDKs.
  *
  * `react` and `react-native` are optional peer dependencies and are only
@@ -47,14 +48,24 @@ export function canSendChurnSurvey(selection: string | null, otherText: string):
   return true;
 }
 
-/** The result Send produces for this selection. */
-export function churnSurveyResultFor(selection: string | null, otherText: string): ChurnSurveyResult {
+/**
+ * The result Send produces for this selection. `additionalInfo` rides along
+ * with an answer when it is not blank; pass '' when the survey does not
+ * allow it.
+ */
+export function churnSurveyResultFor(
+  selection: string | null,
+  otherText: string,
+  additionalInfo = ''
+): ChurnSurveyResult {
   if (selection == null) return { type: 'skipped' };
+  const extra = additionalInfo.trim();
+  const withExtra = extra ? { additionalInfo: extra } : {};
   if (selection === OTHER_KEY) {
     const text = otherText.trim();
-    return text ? { type: 'other', text } : { type: 'skipped' };
+    return text ? { type: 'other', text, ...withExtra } : { type: 'skipped' };
   }
-  return { type: 'option', key: selection };
+  return { type: 'option', key: selection, ...withExtra };
 }
 
 export interface ChurnSurveySheetProps {
@@ -62,7 +73,7 @@ export interface ChurnSurveySheetProps {
   survey: ChurnSurvey | null;
   /** Called once with the answer, or `{ type: 'skipped' }`. */
   onFinish: (result: ChurnSurveyResult) => void;
-  /** Override any of the bundled "Other" / "Skip" / "Send" labels. */
+  /** Override any of the bundled labels ("Other", "Skip", "Send", additional info). */
   labels?: Partial<ChurnSurveyLabels>;
   /** Locale for the bundled labels. Defaults to the device locale. */
   locale?: string;
@@ -80,10 +91,12 @@ export function ChurnSurveySheet(props: ChurnSurveySheetProps): Element {
   const { survey, onFinish } = props;
   const [selection, setSelection] = React.useState<string | null>(null);
   const [otherText, setOtherText] = React.useState('');
+  const [additionalInfo, setAdditionalInfo] = React.useState('');
   const surveyKey = survey ? survey.shownOrder.join('|') + ':' + survey.version : '';
   React.useEffect(() => {
     setSelection(null);
     setOtherText('');
+    setAdditionalInfo('');
   }, [surveyKey]);
 
   const dark = RN.useColorScheme?.() === 'dark';
@@ -188,7 +201,15 @@ export function ChurnSurveySheet(props: ChurnSurveySheetProps): Element {
             },
             survey.title
           ),
-          button(labels.send, () => onFinish(churnSurveyResultFor(selection, otherText)), sendEnabled, true)
+          button(
+            labels.send,
+            () =>
+              onFinish(
+                churnSurveyResultFor(selection, otherText, survey.allowAdditionalInfo ? additionalInfo : '')
+              ),
+            sendEnabled,
+            true
+          )
         ),
         h(
           RN.ScrollView,
@@ -202,6 +223,28 @@ export function ChurnSurveySheet(props: ChurnSurveySheetProps): Element {
                 placeholder: survey.otherPlaceholder,
                 placeholderTextColor: colors.muted,
                 autoFocus: true,
+                multiline: true,
+                maxLength: 1000,
+                style: {
+                  marginTop: 12,
+                  minHeight: 80,
+                  padding: 12,
+                  fontSize: 16,
+                  color: colors.text,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  textAlignVertical: 'top',
+                },
+              })
+            : null,
+          survey.allowAdditionalInfo && selection != null
+            ? h(RN.TextInput, {
+                value: additionalInfo,
+                onChangeText: setAdditionalInfo,
+                placeholder: labels.additionalInfo,
+                placeholderTextColor: colors.muted,
+                accessibilityLabel: labels.additionalInfo,
                 multiline: true,
                 maxLength: 1000,
                 style: {

@@ -4,3 +4,5 @@
 "churn_survey.skip" = "Overslaan";
 /* Churn survey: submit the answer */
 "churn_survey.send" = "Verzenden";
+/* Churn survey: placeholder for the optional additional info field */
+"churn_survey.additional_info" = "Vertel ons meer (optioneel)";

@@ -3,4 +3,5 @@
     <string name="revenuehog_churn_survey_other">其他</string>
     <string name="revenuehog_churn_survey_skip">略過</string>
     <string name="revenuehog_churn_survey_send">傳送</string>
+    <string name="revenuehog_churn_survey_additional_info">詳細說說（選填）</string>
 </resources>

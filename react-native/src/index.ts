@@ -1,8 +1,13 @@
 import { HogClient } from './client';
 import { Logger } from './logger';
-import { tryHookReactNativeIap } from './autoAttribution';
+import { tryHookReactNativeIap, tryReadAndroidRenewals } from './autoAttribution';
 import type {
   AttributePurchaseInput,
+  ChurnSurvey,
+  ChurnSurveyOption,
+  ChurnSurveyPresenter,
+  ChurnSurveyResult,
+  PresentChurnSurveyOptions,
   LogLevel,
   Paywall,
   PaywallOptions,
@@ -14,6 +19,42 @@ import type {
 
 let client: HogClient | undefined;
 let unhookIap: (() => void) | undefined;
+let presenter: ChurnSurveyPresenter | undefined;
+
+async function presentWith(
+  c: HogClient,
+  automatic: boolean,
+  productId: string | undefined
+): Promise<ChurnSurveyResult> {
+  if (!presenter) {
+    new Logger('warn').warn(
+      'presentChurnSurvey needs a churnSurveyPresenter in configure()'
+    );
+    return { type: 'notShown' };
+  }
+  const survey = await c.churnSurvey(automatic);
+  if (!survey) return { type: 'notShown' };
+  await c.churnSurveyShown();
+  let result: ChurnSurveyResult;
+  try {
+    result = await presenter(survey);
+  } catch {
+    result = { type: 'skipped' };
+  }
+  await c.submitChurnSurvey(survey, result, productId);
+  return result;
+}
+
+async function autoRenewOff(
+  c: HogClient,
+  renewals: { originalId: string; productId?: string; willAutoRenew: boolean }[]
+): Promise<void> {
+  const fresh = await c.claimNewlyCancelled(renewals);
+  if (!fresh) return;
+  const productId = renewals.find((r) => r.originalId === fresh)?.productId;
+  const result = await presentWith(c, true, productId);
+  if (result.type !== 'notShown') await c.markChurnHandled(fresh);
+}
 
 function withClient(name: string, work: (c: HogClient) => Promise<void>): Promise<void> {
   if (!client) {
@@ -44,7 +85,15 @@ export const RevenueHog = {
       unhookIap?.();
       unhookIap = undefined;
       client = new HogClient(config);
+      presenter = config.churnSurveyPresenter;
       void client.flush();
+      void client.sendDailyOpen();
+      if (config.churnSurveyAutoTrigger !== false && presenter) {
+        const c = client;
+        void tryReadAndroidRenewals().then((renewals) =>
+          renewals.length > 0 ? autoRenewOff(c, renewals) : undefined
+        );
+      }
       if (config.autoAttribution !== false) {
         unhookIap = tryHookReactNativeIap(
           client,
@@ -78,6 +127,43 @@ export const RevenueHog = {
    */
   attributePurchase(input: AttributePurchaseInput): Promise<void> {
     return withClient('attributePurchase', (c) => c.attributePurchase(input));
+  },
+
+  /**
+   * Show the churn survey now, through your `churnSurveyPresenter`. Call it
+   * right before opening subscription management. Respects the dashboard
+   * switch, sampling and the once-per-90-days cap; resolves
+   * `{ type: 'notShown' }` when any of them says no. The answer (or the
+   * skip) is recorded automatically. Never rejects.
+   */
+  presentChurnSurvey(options: PresentChurnSurveyOptions = {}): Promise<ChurnSurveyResult> {
+    if (!client) {
+      new Logger('warn').warn('presentChurnSurvey called before configure');
+      return Promise.resolve({ type: 'notShown' });
+    }
+    return presentWith(client, false, options.productId).catch(() => ({ type: 'notShown' as const }));
+  },
+
+  /**
+   * Tell the SDK that auto-renew is off for a subscription (for example from
+   * your iOS renewal info). The survey shows once per cancellation, the first
+   * time this is called after auto-renew turned off. Pass
+   * `willAutoRenew: true` when it is back on so a later cancel asks again.
+   */
+  autoRenewChanged(input: {
+    originalTransactionId: string;
+    productId?: string;
+    willAutoRenew: boolean;
+  }): Promise<void> {
+    return withClient('autoRenewChanged', (c) =>
+      autoRenewOff(c, [
+        {
+          originalId: input.originalTransactionId,
+          productId: input.productId,
+          willAutoRenew: input.willAutoRenew,
+        },
+      ]).catch(() => undefined)
+    );
   },
 
   /** Forget the current user (call on logout); issues a fresh anonymous id. */
@@ -135,6 +221,11 @@ export { HogClient } from './client';
 export { memoryStorage } from './storage';
 export type {
   AttributePurchaseInput,
+  ChurnSurvey,
+  ChurnSurveyOption,
+  ChurnSurveyPresenter,
+  ChurnSurveyResult,
+  PresentChurnSurveyOptions,
   LogLevel,
   Paywall,
   PaywallOptions,

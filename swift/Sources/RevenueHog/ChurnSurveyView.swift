@@ -28,7 +28,7 @@ struct ChurnSurveyView: View {
                         row(key: option.key, title: option.title)
                     }
                     if survey.otherEnabled {
-                        row(key: ChurnSurveyRules.otherKey, title: String(localized: "Other"))
+                        row(key: ChurnSurveyRules.otherKey, title: ChurnSurveyStrings.other)
                         if selection == ChurnSurveyRules.otherKey {
                             TextField(survey.otherPlaceholder, text: $otherText)
                         }
@@ -41,10 +41,10 @@ struct ChurnSurveyView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "Skip")) { onFinish(.skipped) }
+                    Button(ChurnSurveyStrings.skip) { onFinish(.skipped) }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "Send")) { send() }.disabled(!canSend)
+                    Button(ChurnSurveyStrings.send) { send() }.disabled(!canSend)
                 }
             }
         }

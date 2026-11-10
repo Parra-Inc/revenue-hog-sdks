@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="revenuehog_churn_survey_other">その他</string>
+    <string name="revenuehog_churn_survey_skip">スキップ</string>
+    <string name="revenuehog_churn_survey_send">送信</string>
+</resources>

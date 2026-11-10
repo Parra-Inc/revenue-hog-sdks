@@ -21,7 +21,7 @@ https://github.com/Parra-Inc/revenue-hog-sdks
 Select the `RevenueHog` product. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.3.0")
+.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.4.0")
 ```
 
 Then add the **App Attest capability** to your app target
@@ -128,6 +128,10 @@ Button("Manage subscription") {
     }
 }
 ```
+
+The "Other", "Skip" and "Send" labels ship localized in the package bundle
+(17 locales, English fallback); the survey title, options and placeholder
+come localized from the dashboard.
 
 ## Customer opens
 

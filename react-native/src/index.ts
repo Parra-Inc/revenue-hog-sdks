@@ -1,6 +1,7 @@
 import { HogClient } from './client';
 import { Logger } from './logger';
 import { tryHookReactNativeIap, tryReadAndroidRenewals } from './autoAttribution';
+import { builtInChurnSurveyPresenter, isChurnSurveyHostMounted } from './ChurnSurveySheet';
 import type {
   AttributePurchaseInput,
   ChurnSurvey,
@@ -26,10 +27,13 @@ async function presentWith(
   automatic: boolean,
   productId: string | undefined
 ): Promise<ChurnSurveyResult> {
-  if (!presenter) {
-    new Logger('warn').warn(
-      'presentChurnSurvey needs a churnSurveyPresenter in configure()'
-    );
+  const show = presenter ?? (isChurnSurveyHostMounted() ? builtInChurnSurveyPresenter : undefined);
+  if (!show) {
+    if (!automatic) {
+      new Logger('warn').warn(
+        'presentChurnSurvey needs <ChurnSurveyHost /> mounted or a churnSurveyPresenter in configure()'
+      );
+    }
     return { type: 'notShown' };
   }
   const survey = await c.churnSurvey(automatic);
@@ -37,7 +41,7 @@ async function presentWith(
   await c.churnSurveyShown();
   let result: ChurnSurveyResult;
   try {
-    result = await presenter(survey);
+    result = await show(survey);
   } catch {
     result = { type: 'skipped' };
   }
@@ -88,7 +92,7 @@ export const RevenueHog = {
       presenter = config.churnSurveyPresenter;
       void client.flush();
       void client.sendDailyOpen();
-      if (config.churnSurveyAutoTrigger !== false && presenter) {
+      if (config.churnSurveyAutoTrigger !== false) {
         const c = client;
         void tryReadAndroidRenewals().then((renewals) =>
           renewals.length > 0 ? autoRenewOff(c, renewals) : undefined
@@ -130,7 +134,8 @@ export const RevenueHog = {
   },
 
   /**
-   * Show the churn survey now, through your `churnSurveyPresenter`. Call it
+   * Show the churn survey now, through your `churnSurveyPresenter` or, when
+   * there is none, the built-in sheet of a mounted `<ChurnSurveyHost />`. Call it
    * right before opening subscription management. Respects the dashboard
    * switch, sampling and the once-per-90-days cap; resolves
    * `{ type: 'notShown' }` when any of them says no. The answer (or the
@@ -219,6 +224,14 @@ export const RevenueHog = {
 export default RevenueHog;
 export { HogClient } from './client';
 export { memoryStorage } from './storage';
+export {
+  ChurnSurveyHost,
+  ChurnSurveySheet,
+  builtInChurnSurveyPresenter,
+} from './ChurnSurveySheet';
+export type { ChurnSurveyHostProps, ChurnSurveySheetProps } from './ChurnSurveySheet';
+export { churnSurveyLabels } from './churnSurveyLabels';
+export type { ChurnSurveyLabels } from './churnSurveyLabels';
 export type {
   AttributePurchaseInput,
   ChurnSurvey,

@@ -1,0 +1,6 @@
+/* Churn survey: the free-text choice */
+"churn_survey.other" = "기타";
+/* Churn survey: dismiss without answering */
+"churn_survey.skip" = "건너뛰기";
+/* Churn survey: submit the answer */
+"churn_survey.send" = "보내기";

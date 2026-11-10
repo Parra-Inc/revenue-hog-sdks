@@ -1,0 +1,6 @@
+/* Churn survey: the free-text choice */
+"churn_survey.other" = "Anders";
+/* Churn survey: dismiss without answering */
+"churn_survey.skip" = "Overslaan";
+/* Churn survey: submit the answer */
+"churn_survey.send" = "Verzenden";

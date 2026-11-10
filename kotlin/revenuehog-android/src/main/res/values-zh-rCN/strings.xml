@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="revenuehog_churn_survey_other">其他</string>
+    <string name="revenuehog_churn_survey_skip">跳过</string>
+    <string name="revenuehog_churn_survey_send">发送</string>
+</resources>

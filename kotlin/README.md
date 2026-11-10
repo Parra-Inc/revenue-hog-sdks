@@ -128,6 +128,11 @@ RevenueHog.presentChurnSurvey(activity, productId = "pro_monthly") { result -> o
 RevenueHog.checkPurchasesForChurn(activity, purchases)
 ```
 
+The "Other", "Skip" and "Send" labels ship as `res/values-xx` strings
+(17 locales, English fallback); override any of them in your app with the
+same resource names (`revenuehog_churn_survey_other`, `_skip`, `_send`).
+The survey title, options and placeholder come localized from the dashboard.
+
 ## Customer opens
 
 `configure()` sends one `POST /api/sdk/v1/open` per device per UTC day with

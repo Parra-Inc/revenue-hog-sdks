@@ -41,6 +41,28 @@ public enum ChurnSurveyResult: Equatable, Sendable {
     case notShown
 }
 
+/// Button labels for the built-in survey, from the package bundle's
+/// `Localizable.strings` (17 locales, English fallback). The server payload
+/// does not carry these labels today; titles, options and the "Other"
+/// placeholder already come localized from the server.
+enum ChurnSurveyStrings {
+    static var other: String { localized("churn_survey.other", "Other") }
+    static var skip: String { localized("churn_survey.skip", "Skip") }
+    static var send: String { localized("churn_survey.send", "Send") }
+
+    /// The label for `key` in `localization` (an lproj name such as `de`),
+    /// or in the user's preferred language when nil.
+    static func localized(_ key: String, _ fallback: String, localization: String? = nil) -> String {
+        var bundle = Bundle.module
+        if let localization,
+           let path = Bundle.module.path(forResource: localization, ofType: "lproj"),
+           let specific = Bundle(path: path) {
+            bundle = specific
+        }
+        return bundle.localizedString(forKey: key, value: fallback, table: nil)
+    }
+}
+
 /// Pure survey rules, kept free of networking and UI so they are unit tested.
 enum ChurnSurveyRules {
     static let otherKey = "other"

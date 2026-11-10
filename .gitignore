@@ -29,3 +29,6 @@ kotlin/.kotlin/
 
 # Git worktrees
 .worktrees/
+
+# Worktrees
+.worktrees/

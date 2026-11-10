@@ -39,16 +39,17 @@ export interface RevenueHogConfig {
    */
   storeEnvironment?: 'Production' | 'Sandbox' | 'Xcode';
   /**
-   * Renders the churn survey. React Native has no built-in UI in this SDK,
-   * so pass a function that shows `survey` (options in the given order,
-   * "Other" last) and resolves with the user's answer. Without it,
-   * `presentChurnSurvey()` resolves `{ type: 'notShown' }`.
+   * Renders the churn survey with your own UI: a function that shows
+   * `survey` (options in the given order, "Other" last) and resolves with
+   * the user's answer. Leave it out to use the built-in sheet by mounting
+   * `<ChurnSurveyHost />`; with neither, `presentChurnSurvey()` resolves
+   * `{ type: 'notShown' }`.
    */
   churnSurveyPresenter?: ChurnSurveyPresenter;
   /**
    * Default `true`: on Android with `react-native-iap`, configure() checks
    * the user's subscriptions and shows the survey on the first launch after
-   * auto-renew turns off. On iOS call `autoRenewTurnedOff()` yourself.
+   * auto-renew turns off. On iOS call `autoRenewChanged()` yourself.
    */
   churnSurveyAutoTrigger?: boolean;
   /** Test seam — custom fetch implementation. */

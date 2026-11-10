@@ -8,6 +8,7 @@ import PackageDescription
 
 let package = Package(
     name: "RevenueHog",
+    defaultLocalization: "en",
     platforms: [
         .iOS(.v15),
         .macOS(.v12),
@@ -18,7 +19,11 @@ let package = Package(
         .library(name: "RevenueHog", targets: ["RevenueHog"])
     ],
     targets: [
-        .target(name: "RevenueHog", path: "swift/Sources/RevenueHog"),
+        .target(
+            name: "RevenueHog",
+            path: "swift/Sources/RevenueHog",
+            resources: [.process("Resources")]
+        ),
         .testTarget(
             name: "RevenueHogTests",
             dependencies: ["RevenueHog"],

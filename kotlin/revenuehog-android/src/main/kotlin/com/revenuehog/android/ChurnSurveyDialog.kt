@@ -8,12 +8,13 @@ import android.widget.LinearLayout
 /**
  * The built-in survey: a platform AlertDialog with a single-choice list, an
  * "Other" text field when enabled, and Skip / Send. No AppCompat or Material
- * dependency, so it inherits the host theme's dialog style.
+ * dependency, so it inherits the host theme's dialog style. The button and
+ * "Other" labels come from res/values-xx (17 locales, English fallback).
  */
 internal object ChurnSurveyDialog {
     fun show(activity: Activity, survey: ChurnSurvey, onFinish: (ChurnSurveyResult) -> Unit) {
         val labels = survey.options.map { it.title } +
-            if (survey.otherEnabled) listOf("Other") else emptyList()
+            if (survey.otherEnabled) listOf(activity.getString(R.string.revenuehog_churn_survey_other)) else emptyList()
         val keys = survey.shownOrder
         var selected = -1
         var finished = false
@@ -41,8 +42,8 @@ internal object ChurnSurveyDialog {
                 other.isEnabled = keys.getOrNull(which) == ChurnSurveyRules.OTHER_KEY
             }
             .setView(container)
-            .setNegativeButton("Skip") { _, _ -> finish(ChurnSurveyResult.Skipped) }
-            .setPositiveButton("Send") { _, _ ->
+            .setNegativeButton(R.string.revenuehog_churn_survey_skip) { _, _ -> finish(ChurnSurveyResult.Skipped) }
+            .setPositiveButton(R.string.revenuehog_churn_survey_send) { _, _ ->
                 val key = keys.getOrNull(selected)
                 finish(
                     when {

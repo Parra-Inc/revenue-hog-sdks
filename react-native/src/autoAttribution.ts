@@ -18,6 +18,7 @@ export interface IapPurchase {
 }
 
 interface IapModule {
+  getAvailablePurchases?: () => Promise<unknown[]>;
   purchaseUpdatedListener?: (
     listener: (purchase: IapPurchase) => void
   ) => { remove?: () => void };
@@ -92,4 +93,39 @@ export function jwsFromPurchase(purchase: IapPurchase | undefined): string | und
   return typeof candidate === 'string' && candidate.split('.').length === 3
     ? candidate
     : undefined;
+}
+
+/**
+ * Android only: auto-renew state of the user's current subscriptions via
+ * react-native-iap's `getAvailablePurchases()` (`autoRenewingAndroid`). Empty
+ * on iOS, where the module does not expose renewal info, and whenever the
+ * module is absent or throws.
+ */
+export async function tryReadAndroidRenewals(): Promise<
+  { originalId: string; productId?: string; willAutoRenew: boolean }[]
+> {
+  try {
+    const mod = require('react-native-iap') as { default?: IapModule } & IapModule;
+    const iap = mod?.default?.getAvailablePurchases ? mod.default : mod;
+    if (typeof iap?.getAvailablePurchases !== 'function') return [];
+    return renewalsFromPurchases(await iap.getAvailablePurchases());
+  } catch {
+    return [];
+  }
+}
+
+/** Purchases carrying `autoRenewingAndroid` become renewal states. */
+export function renewalsFromPurchases(
+  purchases: unknown[]
+): { originalId: string; productId?: string; willAutoRenew: boolean }[] {
+  const out: { originalId: string; productId?: string; willAutoRenew: boolean }[] = [];
+  for (const p of Array.isArray(purchases) ? purchases : []) {
+    if (!p || typeof p !== 'object') continue;
+    const row = p as IapPurchase & { autoRenewingAndroid?: boolean };
+    if (typeof row.autoRenewingAndroid !== 'boolean') continue;
+    const id = row.purchaseToken ?? row.purchaseTokenAndroid;
+    if (!id) continue;
+    out.push({ originalId: id, productId: row.productId, willAutoRenew: row.autoRenewingAndroid });
+  }
+  return out;
 }

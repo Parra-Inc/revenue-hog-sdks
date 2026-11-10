@@ -29,6 +29,11 @@ internal interface Transport {
         headers: Map<String, String>,
         timeoutMs: Int,
     ): TransportResponse = TransportResponse(post(url, body, headers), "")
+
+    /** GETs [url] (config reads such as the churn survey). */
+    @Throws(IOException::class)
+    fun get(url: String, headers: Map<String, String>): TransportResponse =
+        throw IOException("GET not supported by this transport")
 }
 
 /** Plain HttpURLConnection — ships with the platform, zero dependencies. */
@@ -42,6 +47,21 @@ internal class HttpUrlConnectionTransport : Transport {
         headers: Map<String, String>,
         timeoutMs: Int,
     ): TransportResponse = request(url, body, headers, timeoutMs, readBody = true)
+
+    override fun get(url: String, headers: Map<String, String>): TransportResponse {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 15_000
+            for ((field, value) in headers) connection.setRequestProperty(field, value)
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            TransportResponse(status, stream?.use { it.readBytes().toString(Charsets.UTF_8) } ?: "")
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun request(
         url: String,

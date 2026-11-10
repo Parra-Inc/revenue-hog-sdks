@@ -1,0 +1,6 @@
+/* Churn survey: the free-text choice */
+"churn_survey.other" = "其他";
+/* Churn survey: dismiss without answering */
+"churn_survey.skip" = "略過";
+/* Churn survey: submit the answer */
+"churn_survey.send" = "傳送";

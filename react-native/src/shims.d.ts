@@ -15,5 +15,5 @@ declare const crypto: { randomUUID(): string } | undefined;
 
 declare function fetch(
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string }
+  init: { method: string; headers: Record<string, string>; body?: string }
 ): Promise<{ status: number }>;

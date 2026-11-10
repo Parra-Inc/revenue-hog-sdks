@@ -1,0 +1,6 @@
+/* Churn survey: the free-text choice */
+"churn_survey.other" = "Annat";
+/* Churn survey: dismiss without answering */
+"churn_survey.skip" = "Hoppa över";
+/* Churn survey: submit the answer */
+"churn_survey.send" = "Skicka";

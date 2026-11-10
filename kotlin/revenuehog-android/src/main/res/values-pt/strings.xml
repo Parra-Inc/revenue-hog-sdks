@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="revenuehog_churn_survey_other">Outro</string>
+    <string name="revenuehog_churn_survey_skip">Ignorar</string>
+    <string name="revenuehog_churn_survey_send">Enviar</string>
+</resources>

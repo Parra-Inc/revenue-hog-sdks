@@ -100,6 +100,8 @@ setPurchaseListener(({ results }) => {
 | `RevenueHog.attributePurchase({ originalTransactionId, productId?, jws? })` | Links a purchase to the current user. `jws` is the StoreKit 2 signed transaction (iOS); when present the server verifies it against Apple's signature and it is sent in the `jws` field of `POST /api/sdk/v1/attribute`. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
 | `RevenueHog.flush()` | Retries the offline queue (e.g. on connectivity regained). |
+| `RevenueHog.presentChurnSurvey({ productId? })` | Shows the churn survey through your `churnSurveyPresenter` (or the built-in sheet when `<ChurnSurveyHost />` is mounted) and records the answer. Resolves `{ type: 'option' \| 'other' \| 'skipped' \| 'notShown' }`. |
+| `RevenueHog.autoRenewChanged({ originalTransactionId, productId?, willAutoRenew })` | Reports a subscription's auto-renew state; the survey shows once per cancellation. |
 
 ### Config
 
@@ -117,6 +119,84 @@ RevenueHog.configure({
 
 `StorageAdapter` is just `{ getItem, setItem, removeItem }` returning
 promises: MMKV wrappers, SecureStore, whatever you like.
+
+## Churn survey
+
+Ask why someone is leaving, with the options you configure in the
+RevenueHog dashboard (Retention, Churn survey). Single choice plus an
+optional "Other" text field. Options are shuffled per user when the
+dashboard says so, "Other" always stays last, and the order shown is sent
+with the answer so position bias can be measured. A survey appears at most
+once per user per 90 days (configurable), and the dashboard's sample rate
+applies. Skips are recorded too, so response rates are honest. Do not ask
+for personal data in the "Other" field.
+
+### Built-in sheet
+
+Mount `<ChurnSurveyHost />` once near the root of your app. It renders a
+modal sheet matching the iOS and Android SDKs: the options in the order the
+server sent them (shuffled when the dashboard says so), "Other" last with a
+text field, and Skip and Send. With no `churnSurveyPresenter` configured,
+`presentChurnSurvey()` and the Android auto-renew-off trigger use it.
+
+```tsx
+import RevenueHog, { ChurnSurveyHost } from '@revenuehog/react-native';
+
+RevenueHog.configure();
+
+export default function App() {
+  return (
+    <>
+      <Root />
+      <ChurnSurveyHost />
+    </>
+  );
+}
+
+// Before opening subscription management:
+await RevenueHog.presentChurnSurvey({ productId: 'pro.monthly' });
+```
+
+The "Other", "Skip" and "Send" labels ship in 17 locales (en, ar, de, es,
+fr, it, ja, ko, nl, pl, pt-BR, pt, ru, sv, tr, zh-Hans, zh-Hant), picked from
+the device locale with English as the fallback; the same strings ship in the
+Swift and Kotlin SDKs. The survey title, options and placeholder come
+localized from the dashboard. Override labels or the locale with
+`<ChurnSurveyHost labels={{ send: 'Submit' }} locale="de" />`.
+`<ChurnSurveySheet survey={survey} onFinish={...} />` is the same sheet as a
+controlled component if you want to drive it yourself.
+
+`react` and `react-native` are optional peer dependencies: they are only
+loaded when the sheet renders, so headless use of the SDK is unaffected.
+
+### Custom UI
+
+To render the survey yourself, pass a presenter that shows
+`survey.options` in the given order (then "Other" when
+`survey.otherEnabled`) and resolves with the answer. A presenter takes
+precedence over the built-in sheet. `churnSurveyLabels()` returns the
+bundled, localized button labels:
+
+```ts
+RevenueHog.configure({
+  churnSurveyPresenter: (survey) => showMyChurnSheet(survey), // Promise<ChurnSurveyResult>
+});
+
+// Before opening subscription management:
+await RevenueHog.presentChurnSurvey({ productId: 'pro.monthly' });
+```
+
+On Android with `react-native-iap`, `configure()` reads
+`autoRenewingAndroid` and shows the survey on the first launch after
+auto-renew turns off. On iOS, call `autoRenewChanged()` with the renewal
+state you have.
+
+## Customer opens
+
+`configure()` sends one `POST /api/sdk/v1/open` per device per UTC day with
+the current app user id, so every person who opens the app counts as a
+customer. The first `identify()` sends the anonymous id so the server merges
+the two.
 
 ## When do I need this?
 

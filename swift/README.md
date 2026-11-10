@@ -21,7 +21,7 @@ https://github.com/Parra-Inc/revenue-hog-sdks
 Select the `RevenueHog` product. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.1.0")
+.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.4.0")
 ```
 
 Then add the **App Attest capability** to your app target
@@ -92,6 +92,7 @@ Apple's sandbox automatically, so `production` is always the right value.
 | `RevenueHog.setAttributes(_:)` | Attaches a flat `[String: String]` map to the user's profile (plan, cohort, …). |
 | `RevenueHog.attributePurchase(originalTransactionId:productId:)` | Manual attribution. Only needed when auto-attribution is off. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Device enrollment survives. |
+| `RevenueHog.presentChurnSurvey(productId:)` | Shows the churn survey sheet now and records the answer. Returns `.option(key)`, `.other(text)`, `.skipped` or `.notShown`. |
 
 ### Options
 
@@ -99,9 +100,45 @@ Apple's sandbox automatically, so `production` is always the right value.
 RevenueHog.configure(options: Options(
     baseURL: URL(string: "https://hog.internal.example")!, // self-hosted / dev
     enableAutoAttribution: true,                            // default
-    logLevel: .debug                                        // default .warn
+    logLevel: .debug,                                       // default .warn
+    enableChurnSurveyAutoTrigger: true                      // default
 ))
 ```
+
+## Churn survey
+
+Ask why someone is leaving, with the options you configure in the
+RevenueHog dashboard (Retention, Churn survey). Single choice plus an
+optional "Other" text field. Options are shuffled per user when the
+dashboard says so, "Other" always stays last, and the order shown is sent
+with the answer so position bias can be measured. A survey appears at most
+once per user per 90 days (configurable), and the dashboard's sample rate
+applies. Skips are recorded too, so response rates are honest. Do not ask
+for personal data in the "Other" field.
+
+It shows on its own on the first launch after StoreKit renewal info says
+auto-renew is off (once per cancellation). For your own "Manage
+subscription" button, call it first:
+
+```swift
+Button("Manage subscription") {
+    Task {
+        await RevenueHog.presentChurnSurvey(productId: "pro.monthly")
+        try? await AppStore.showManageSubscriptions(in: scene)
+    }
+}
+```
+
+The "Other", "Skip" and "Send" labels ship localized in the package bundle
+(17 locales, English fallback); the survey title, options and placeholder
+come localized from the dashboard.
+
+## Customer opens
+
+`configure()` sends one `POST /api/sdk/v1/open` per device per UTC day with
+the current app user id, so every person who opens the app is a customer in
+the dashboard, not only subscribers. The first `identify(userId:)` sends the
+anonymous id along so the server merges the two.
 
 ## When do I need this?
 

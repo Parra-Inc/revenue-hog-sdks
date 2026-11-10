@@ -1,6 +1,6 @@
 {
   "name": "@revenuehog/react-native",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Optional user-level attribution for RevenueHog. Pure JS — works in Expo Go. RevenueHog itself works without any SDK.",
   "license": "MIT",
   "author": "Parra, Inc.",
@@ -23,10 +23,18 @@
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "*",
+    "react": ">=17",
+    "react-native": ">=0.64",
     "react-native-iap": "*"
   },
   "peerDependenciesMeta": {
     "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
       "optional": true
     },
     "react-native-iap": {

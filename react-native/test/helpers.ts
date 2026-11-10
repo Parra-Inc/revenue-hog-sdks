@@ -4,6 +4,7 @@ import type { FetchLike, RevenueHogConfig, StorageAdapter } from '../src/types';
 
 export interface Recorded {
   url: string;
+  method: string;
   headers: Record<string, string>;
   body: Record<string, unknown>;
 }
@@ -26,8 +27,9 @@ export function mockFetch(script: ScriptedResponse[] = []): MockFetch {
   const fetchFn: FetchLike = async (url, init) => {
     requests.push({
       url,
+      method: init.method,
       headers: init.headers,
-      body: JSON.parse(init.body) as Record<string, unknown>,
+      body: (init.body ? JSON.parse(init.body) : {}) as Record<string, unknown>,
     });
     const next = script.length > 0 ? (script.shift() as ScriptedResponse) : 200;
     if (next === 'network-error') throw new TypeError('Network request failed');
@@ -43,7 +45,8 @@ export function mockFetch(script: ScriptedResponse[] = []): MockFetch {
 export function makeClient(
   transport: MockFetch,
   overrides: Partial<RevenueHogConfig> = {},
-  storage: StorageAdapter = memoryStorage()
+  storage: StorageAdapter = memoryStorage(),
+  now?: () => number
 ): { client: HogClient; storage: StorageAdapter } {
   const client = new HogClient(
     {
@@ -63,6 +66,7 @@ export function makeClient(
         locale: 'en-US',
       },
       backoffMs: () => 0,
+      ...(now ? { now } : {}),
     }
   );
   return { client, storage };

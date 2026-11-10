@@ -94,6 +94,9 @@ your delegate untouched.
 | `RevenueHog.billingListener(delegate?)` | Reflection-based `PurchasesUpdatedListener` wrapper (see above). |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
 | `RevenueHog.flush()` | Retries the offline queue. |
+| `RevenueHog.presentChurnSurvey(activity, productId?, onResult?)` | Shows the churn survey dialog now and records the answer. |
+| `RevenueHog.checkPurchasesForChurn(activity, purchases)` | Pass Play Billing purchases; shows the survey once when a subscription's auto-renew turns off. |
+| `RevenueHog.autoRenewChanged(activity, purchaseToken, willAutoRenew, productId?)` | Same, for apps that track renewal state themselves. |
 
 ### Options
 
@@ -103,6 +106,39 @@ RevenueHog.configure(this, Options(
     logLevel = LogLevel.DEBUG,                // default WARN
 ))
 ```
+
+## Churn survey
+
+Ask why someone is leaving, with the options you configure in the
+RevenueHog dashboard (Retention, Churn survey). Single choice plus an
+optional "Other" text field. Options are shuffled per user when the
+dashboard says so, "Other" always stays last, and the order shown is sent
+with the answer so position bias can be measured. A survey appears at most
+once per user per 90 days (configurable), and the dashboard's sample rate
+applies. Skips are recorded too, so response rates are honest. Do not ask
+for personal data in the "Other" field.
+
+The SDK ships a platform `AlertDialog`, so there is nothing to build:
+
+```kotlin
+// Before opening subscription management:
+RevenueHog.presentChurnSurvey(activity, productId = "pro_monthly") { result -> openPlaySubscriptions() }
+
+// After queryPurchasesAsync, for the automatic trigger:
+RevenueHog.checkPurchasesForChurn(activity, purchases)
+```
+
+The "Other", "Skip" and "Send" labels ship as `res/values-xx` strings
+(17 locales, English fallback); override any of them in your app with the
+same resource names (`revenuehog_churn_survey_other`, `_skip`, `_send`).
+The survey title, options and placeholder come localized from the dashboard.
+
+## Customer opens
+
+`configure()` sends one `POST /api/sdk/v1/open` per device per UTC day with
+the current app user id, so every person who opens the app counts as a
+customer. The first `identify()` sends the anonymous id so the server merges
+the two.
 
 ## When do I need this?
 

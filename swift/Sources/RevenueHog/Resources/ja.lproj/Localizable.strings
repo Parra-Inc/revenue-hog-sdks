@@ -1,0 +1,6 @@
+/* Churn survey: the free-text choice */
+"churn_survey.other" = "その他";
+/* Churn survey: dismiss without answering */
+"churn_survey.skip" = "スキップ";
+/* Churn survey: submit the answer */
+"churn_survey.send" = "送信";

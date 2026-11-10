@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="revenuehog_churn_survey_other">Другое</string>
+    <string name="revenuehog_churn_survey_skip">Пропустить</string>
+    <string name="revenuehog_churn_survey_send">Отправить</string>
+</resources>

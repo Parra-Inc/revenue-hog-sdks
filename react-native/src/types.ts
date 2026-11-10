@@ -38,6 +38,20 @@ export interface RevenueHogConfig {
    * config); the server reads an absent value as Production.
    */
   storeEnvironment?: 'Production' | 'Sandbox' | 'Xcode';
+  /**
+   * Renders the churn survey with your own UI: a function that shows
+   * `survey` (options in the given order, "Other" last) and resolves with
+   * the user's answer. Leave it out to use the built-in sheet by mounting
+   * `<ChurnSurveyHost />`; with neither, `presentChurnSurvey()` resolves
+   * `{ type: 'notShown' }`.
+   */
+  churnSurveyPresenter?: ChurnSurveyPresenter;
+  /**
+   * Default `true`: on Android with `react-native-iap`, configure() checks
+   * the user's subscriptions and shows the survey on the first launch after
+   * auto-renew turns off. On iOS call `autoRenewChanged()` yourself.
+   */
+  churnSurveyAutoTrigger?: boolean;
   /** Test seam — custom fetch implementation. */
   fetch?: FetchLike;
 }
@@ -91,6 +105,36 @@ export interface AttributePurchaseInput {
   jws?: string;
 }
 
+export interface ChurnSurveyOption {
+  /** Stable key from the dashboard, e.g. `too_expensive`. */
+  key: string;
+  /** Localized title to show. */
+  title: string;
+}
+
+/** The survey to render: options already in display order, "Other" last. */
+export interface ChurnSurvey {
+  version: number;
+  title: string;
+  options: ChurnSurveyOption[];
+  otherEnabled: boolean;
+  otherPlaceholder: string;
+  /** Keys in shown order, "other" last when enabled. Sent with the answer. */
+  shownOrder: string[];
+}
+
+export type ChurnSurveyResult =
+  | { type: 'option'; key: string }
+  | { type: 'other'; text: string }
+  | { type: 'skipped' }
+  | { type: 'notShown' };
+
+export type ChurnSurveyPresenter = (survey: ChurnSurvey) => Promise<ChurnSurveyResult>;
+
+export interface PresentChurnSurveyOptions {
+  productId?: string;
+}
+
 export interface IdentifyPayload {
   appUserId: string;
   bundleId: string;
@@ -99,6 +143,8 @@ export interface IdentifyPayload {
   deviceModel?: string;
   locale?: string;
   attributes?: Record<string, string>;
+  /** Pre-login `$anon_` id, sent on the first identify so the server merges it. */
+  anonymousAppUserId?: string;
 }
 
 export interface AttributePayload {
@@ -121,7 +167,8 @@ export type FetchLike = (
   init: {
     method: string;
     headers: Record<string, string>;
-    body: string;
+    /** Absent on GET (the churn survey config read). */
+    body?: string;
   }
   // `text` is optional so old mocks stay valid; the real fetch Response
   // satisfies it structurally. Only the paywall path reads a body.

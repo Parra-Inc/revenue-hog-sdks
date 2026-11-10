@@ -100,6 +100,8 @@ setPurchaseListener(({ results }) => {
 | `RevenueHog.attributePurchase({ originalTransactionId, productId?, jws? })` | Links a purchase to the current user. `jws` is the StoreKit 2 signed transaction (iOS); when present the server verifies it against Apple's signature and it is sent in the `jws` field of `POST /api/sdk/v1/attribute`. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
 | `RevenueHog.flush()` | Retries the offline queue (e.g. on connectivity regained). |
+| `RevenueHog.presentChurnSurvey({ productId? })` | Shows the churn survey through your `churnSurveyPresenter` and records the answer. Resolves `{ type: 'option' \| 'other' \| 'skipped' \| 'notShown' }`. |
+| `RevenueHog.autoRenewChanged({ originalTransactionId, productId?, willAutoRenew })` | Reports a subscription's auto-renew state; the survey shows once per cancellation. |
 
 ### Config
 
@@ -117,6 +119,42 @@ RevenueHog.configure({
 
 `StorageAdapter` is just `{ getItem, setItem, removeItem }` returning
 promises: MMKV wrappers, SecureStore, whatever you like.
+
+## Churn survey
+
+Ask why someone is leaving, with the options you configure in the
+RevenueHog dashboard (Retention, Churn survey). Single choice plus an
+optional "Other" text field. Options are shuffled per user when the
+dashboard says so, "Other" always stays last, and the order shown is sent
+with the answer so position bias can be measured. A survey appears at most
+once per user per 90 days (configurable), and the dashboard's sample rate
+applies. Skips are recorded too, so response rates are honest. Do not ask
+for personal data in the "Other" field.
+
+This SDK has no UI dependency, so you render the survey. Pass a presenter
+that shows `survey.options` in the given order (then "Other" when
+`survey.otherEnabled`) and resolves with the answer:
+
+```ts
+RevenueHog.configure({
+  churnSurveyPresenter: (survey) => showMyChurnSheet(survey), // Promise<ChurnSurveyResult>
+});
+
+// Before opening subscription management:
+await RevenueHog.presentChurnSurvey({ productId: 'pro.monthly' });
+```
+
+On Android with `react-native-iap`, `configure()` reads
+`autoRenewingAndroid` and shows the survey on the first launch after
+auto-renew turns off. On iOS, call `autoRenewChanged()` with the renewal
+state you have.
+
+## Customer opens
+
+`configure()` sends one `POST /api/sdk/v1/open` per device per UTC day with
+the current app user id, so every person who opens the app counts as a
+customer. The first `identify()` sends the anonymous id so the server merges
+the two.
 
 ## When do I need this?
 

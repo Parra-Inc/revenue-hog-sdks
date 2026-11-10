@@ -121,6 +121,20 @@ The cache invalidates itself on `identify`/`reset`. QA can preview a variant
 with the `forceVariant` option (honored only for non-production traffic,
 never recorded).
 
+## Churn survey and customer opens
+
+`presentChurnSurvey` asks a leaving subscriber why, with options you
+configure in the dashboard: shuffled, "Other" last, the shown order
+recorded, at most once per user per 90 days, with the dashboard's sample
+rate. It also shows automatically on the first launch after auto-renew
+turns off (iOS reads StoreKit renewal info itself; Android and React Native
+take the store's purchases or renewal state from the app).
+
+`configure()` also sends one open ping per device per UTC day, so everyone
+who opens the app counts as a customer, not only subscribers. The first
+`identify` carries the anonymous id so the server merges that customer into
+the real user.
+
 ## API contract
 
 All three SDKs speak the same endpoints:
@@ -133,6 +147,11 @@ POST /api/sdk/v1/attribute  { appUserId, bundleId, originalTransactionId, produc
 POST /api/sdk/v1/paywall    { appUserId, bundleId, installId, entitlement, environment?, forceVariant? }
                             -> { entitlement, skus: [{ productId, kind }], experimentId?, variantKey?, ttlSeconds }
 POST /api/sdk/v1/paywall/impression { bundleId, installId, experimentId, renderedSkus }
+POST /api/sdk/v1/open       { appUserId, bundleId, platform, osVersion?, deviceModel?, locale? }
+GET  /api/sdk/v1/churn-survey?bundleId&platform&appUserId&locale
+                            -> { survey: { version, title, options, other, randomize, trigger, sampleRate } | null, show, reason? }
+POST /api/sdk/v1/churn-survey/response { bundleId, platform, appUserId, responseId, optionKey | otherText | skipped,
+                            surveyVersion, shownOrder, productId?, store?, environment?, occurredAt }
 Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 

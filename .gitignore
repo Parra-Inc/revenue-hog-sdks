@@ -26,3 +26,6 @@ kotlin/.kotlin/
 .idea/
 *.iml
 .vscode/
+
+# Git worktrees
+.worktrees/

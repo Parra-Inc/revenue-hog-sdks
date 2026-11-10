@@ -1,6 +1,9 @@
 package com.revenuehog.android
 
+import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.content.SharedPreferences
 import android.os.Build
 import android.util.Log
@@ -30,6 +33,9 @@ object RevenueHog {
     @Volatile
     private var client: HogClient? = null
 
+    @Volatile
+    private var autoTrigger = true
+
     /** Sets up the SDK. Call once, as early as possible. Never throws. */
     @JvmStatic
     @JvmOverloads
@@ -53,7 +59,9 @@ object RevenueHog {
                 logSink = { Log.d("RevenueHog", it) },
             )
             client = created
+            autoTrigger = options.enableChurnSurveyAutoTrigger
             created.flush()
+            created.sendDailyOpen()
         } catch (t: Throwable) {
             Log.d("RevenueHog", "configure failed: ${t.message}")
         }
@@ -147,6 +155,112 @@ object RevenueHog {
     @JvmStatic
     fun paywallShown(paywall: Paywall, rendered: List<String>) {
         withClient("paywallShown") { it.paywallShown(paywall, rendered) }
+    }
+
+    /**
+     * Shows the churn survey now, over [activity]. Call it right before
+     * opening subscription management. Respects the dashboard switch,
+     * sampling and the once-per-90-days cap; [onResult] (main thread) gets
+     * [ChurnSurveyResult.NotShown] when any of them says no. The answer, or
+     * the skip, is recorded automatically.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun presentChurnSurvey(
+        activity: Activity,
+        productId: String? = null,
+        onResult: ((ChurnSurveyResult) -> Unit)? = null,
+    ) {
+        val current = client
+        if (current == null) {
+            Log.d("RevenueHog", "presentChurnSurvey called before configure")
+            onResult?.invoke(ChurnSurveyResult.NotShown)
+            return
+        }
+        present(current, activity, automatic = false, productId = productId, onResult = onResult)
+    }
+
+    /**
+     * Auto trigger: pass the Play Billing `Purchase` objects from
+     * `queryPurchasesAsync` (read reflectively, no Billing dependency). The
+     * first time a subscription shows `isAutoRenewing == false`, the survey
+     * appears once for that cancellation. A purchase that renews again
+     * resets, so a later cancel asks again.
+     */
+    @JvmStatic
+    fun checkPurchasesForChurn(activity: Activity, purchases: List<*>) {
+        val current = client ?: return
+        if (!autoTrigger) return
+        try {
+            val renewals = purchases.mapNotNull { p ->
+                if (p == null) return@mapNotNull null
+                val token = runCatching { p.javaClass.getMethod("getPurchaseToken").invoke(p) as? String }.getOrNull()
+                val renewing = runCatching { p.javaClass.getMethod("isAutoRenewing").invoke(p) as? Boolean }.getOrNull()
+                val product = runCatching {
+                    (p.javaClass.getMethod("getProducts").invoke(p) as? List<*>)?.firstOrNull() as? String
+                }.getOrNull()
+                if (token == null || renewing == null) null else Triple(token, renewing, product)
+            }
+            autoRenewChanged(activity, current, renewals)
+        } catch (t: Throwable) {
+            Log.d("RevenueHog", "swallowed: ${t.message}")
+        }
+    }
+
+    /**
+     * Same as [checkPurchasesForChurn] for apps that track renewal state
+     * themselves: report one subscription's auto-renew state.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun autoRenewChanged(activity: Activity, purchaseToken: String, willAutoRenew: Boolean, productId: String? = null) {
+        val current = client ?: return
+        if (!autoTrigger) return
+        autoRenewChanged(activity, current, listOf(Triple(purchaseToken, willAutoRenew, productId)))
+    }
+
+    private fun autoRenewChanged(activity: Activity, current: HogClient, renewals: List<Triple<String, Boolean, String?>>) {
+        current.claimNewlyCancelled(renewals.map { it.first to it.second }) { fresh ->
+            if (fresh == null) return@claimNewlyCancelled
+            val productId = renewals.firstOrNull { it.first == fresh }?.third
+            present(current, activity, automatic = true, productId = productId) { result ->
+                if (result != ChurnSurveyResult.NotShown) current.markChurnHandled(fresh)
+            }
+        }
+    }
+
+    private fun present(
+        current: HogClient,
+        activity: Activity,
+        automatic: Boolean,
+        productId: String?,
+        onResult: ((ChurnSurveyResult) -> Unit)?,
+    ) {
+        val main = Handler(Looper.getMainLooper())
+        fun deliver(result: ChurnSurveyResult) {
+            try {
+                onResult?.invoke(result)
+            } catch (_: Throwable) {
+            }
+        }
+        current.churnSurvey(automatic) { survey ->
+            main.post {
+                if (survey == null || activity.isFinishing) {
+                    deliver(ChurnSurveyResult.NotShown)
+                    return@post
+                }
+                try {
+                    current.churnSurveyShown()
+                    ChurnSurveyDialog.show(activity, survey) { result ->
+                        current.submitChurnSurvey(survey, result, productId)
+                        deliver(result)
+                    }
+                } catch (t: Throwable) {
+                    Log.d("RevenueHog", "swallowed: ${t.message}")
+                    deliver(ChurnSurveyResult.NotShown)
+                }
+            }
+        }
     }
 
     /**

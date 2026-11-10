@@ -19,7 +19,7 @@ internal data class Recorded(
     val body: String,
     val headers: Map<String, String>,
 ) {
-    val json: JSONObject get() = JSONObject(body)
+    val json: JSONObject get() = JSONObject(body.ifEmpty { "{}" })
 }
 
 /**
@@ -40,6 +40,16 @@ internal class FakeTransport(vararg script: Int) : Transport {
         return next
     }
 
+    /** Bodies for GET responses, consumed in order (status from the script). */
+    val getBodies = mutableListOf<String>()
+
+    override fun get(url: String, headers: Map<String, String>): TransportResponse {
+        requests.add(Recorded(url, "", headers))
+        val next = if (script.isEmpty()) 200 else script.removeAt(0)
+        if (next < 0) throw IOException("network down")
+        return TransportResponse(next, if (getBodies.isEmpty()) "" else getBodies.removeAt(0))
+    }
+
     override fun postForBody(
         url: String,
         body: String,
@@ -58,6 +68,7 @@ internal object TestSupport {
     fun makeClient(
         transport: FakeTransport,
         store: KeyValueStore = MemoryStore(),
+        now: () -> Long = { System.currentTimeMillis() },
     ): HogClient = HogClient(
         options = Options(baseUrl = "https://example.test", logLevel = LogLevel.SILENT),
         device = DeviceInfo(
@@ -73,5 +84,6 @@ internal object TestSupport {
         backoffMs = { 0 },
         sleep = { },
         logSink = { },
+        now = now,
     )
 }

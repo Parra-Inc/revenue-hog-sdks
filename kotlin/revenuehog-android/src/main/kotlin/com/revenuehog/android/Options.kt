@@ -8,10 +8,14 @@ enum class LogLevel { DEBUG, INFO, WARN, ERROR, SILENT }
  *
  * @property baseUrl API host — override for self-hosted deployments or dev.
  * @property logLevel defaults to [LogLevel.WARN].
+ * @property enableChurnSurveyAutoTrigger when `true` (default),
+ *   [RevenueHog.checkPurchasesForChurn] shows the churn survey the first time
+ *   it sees a subscription with auto-renew off.
  */
 data class Options(
     val baseUrl: String = "https://revenuehog.dev",
     val logLevel: LogLevel = LogLevel.WARN,
+    val enableChurnSurveyAutoTrigger: Boolean = true,
 )
 
 internal class Logger(

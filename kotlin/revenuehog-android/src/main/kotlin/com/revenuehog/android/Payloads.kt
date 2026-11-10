@@ -20,6 +20,9 @@ internal object Payloads {
     const val ATTRIBUTE_PATH = "/api/sdk/v1/attribute"
     const val PAYWALL_PATH = "/api/sdk/v1/paywall"
     const val IMPRESSION_PATH = "/api/sdk/v1/paywall/impression"
+    const val OPEN_PATH = "/api/sdk/v1/open"
+    const val CHURN_SURVEY_PATH = "/api/sdk/v1/churn-survey"
+    const val CHURN_RESPONSE_PATH = "/api/sdk/v1/churn-survey/response"
 
     fun paywall(
         appUserId: String,

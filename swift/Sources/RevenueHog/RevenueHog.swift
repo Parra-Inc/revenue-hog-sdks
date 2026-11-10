@@ -32,7 +32,12 @@ public enum RevenueHog {
         self.client = client
         let log = Logger(level: options.logLevel)
         Task.detached(priority: .utility) { EntitlementCheck.run(log: log) }
-        Task { await client.start() }
+        Task {
+            await client.start()
+            if options.enableChurnSurveyAutoTrigger {
+                await autoChurnSurvey(client)
+            }
+        }
         #if canImport(StoreKit)
         if options.enableAutoAttribution {
             listener = TransactionObserver.start(client: client)
@@ -108,6 +113,44 @@ public enum RevenueHog {
     /// No-op when no experiment is running.
     public static func paywallShown(_ paywall: Paywall, rendered: [String]) {
         withClient { await $0.paywallShown(paywall, rendered: rendered) }
+    }
+
+    /// Shows the churn survey now, for apps with their own "Manage
+    /// subscription" button: call it right before opening subscription
+    /// management. Respects the dashboard switch, sampling and the
+    /// once-per-90-days cap; returns `.notShown` when any of them says no.
+    /// The answer (or the skip) is recorded automatically.
+    @discardableResult
+    public static func presentChurnSurvey(productId: String? = nil) async -> ChurnSurveyResult {
+        lock.lock()
+        let client = self.client
+        lock.unlock()
+        guard let client else {
+            Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
+            return .notShown
+        }
+        return await present(client, ignoreTrigger: true, productId: productId)
+    }
+
+    private static func present(
+        _ client: HogClient, ignoreTrigger: Bool, productId: String?
+    ) async -> ChurnSurveyResult {
+        guard let survey = await client.churnSurvey(ignoreTrigger: ignoreTrigger) else { return .notShown }
+        await client.churnSurveyShown()
+        let result = await ChurnSurveyPresenter.present(survey)
+        await client.submitChurnSurvey(survey, result: result, productId: productId)
+        return result
+    }
+
+    /// First launch after auto-renew turned off: ask once per cancellation.
+    private static func autoChurnSurvey(_ client: HogClient) async {
+        guard let cancelled = await client.claimNewlyCancelledSubscription() else { return }
+        // Give the host app a moment to put its first screen up.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        let result = await present(client, ignoreTrigger: false, productId: cancelled.productId)
+        if result != .notShown {
+            await client.markSubscriptionHandled(cancelled.originalId)
+        }
     }
 
     private static func withClient(_ work: @escaping @Sendable (HogClient) async -> Void) {

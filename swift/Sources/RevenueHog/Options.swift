@@ -27,14 +27,21 @@ public struct Options: Sendable {
     /// Defaults to `.warn`.
     public var logLevel: LogLevel
 
+    /// When `true` (default) the SDK checks StoreKit renewal info at launch
+    /// and shows the churn survey on the first launch after auto-renew turns
+    /// off, if the survey is enabled in the dashboard.
+    public var enableChurnSurveyAutoTrigger: Bool
+
     public init(
         baseURL: URL = URL(string: "https://revenuehog.dev")!,
         enableAutoAttribution: Bool = true,
-        logLevel: LogLevel = .warn
+        logLevel: LogLevel = .warn,
+        enableChurnSurveyAutoTrigger: Bool = true
     ) {
         self.baseURL = baseURL
         self.enableAutoAttribution = enableAutoAttribution
         self.logLevel = logLevel
+        self.enableChurnSurveyAutoTrigger = enableChurnSurveyAutoTrigger
     }
 }
 

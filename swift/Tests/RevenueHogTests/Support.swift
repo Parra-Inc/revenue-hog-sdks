@@ -21,6 +21,7 @@ struct RecordedRequest {
     let url: URL
     let body: Data
     let headers: [String: String]
+    var method = "POST"
 
     var json: [String: Any] {
         (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
@@ -54,6 +55,21 @@ final class MockTransport: Transport, @unchecked Sendable {
 
     func post(url: URL, body: Data, headers: [String: String]) async throws -> TransportResponse {
         switch record(RecordedRequest(url: url, body: body, headers: headers)) {
+        case .status(let code): return TransportResponse(status: code, body: Data())
+        case .json(let code, let json): return TransportResponse(status: code, body: Data(json.utf8))
+        case .networkError: throw URLError(.notConnectedToInternet)
+        case .hang:
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+            throw URLError(.timedOut)
+        }
+    }
+
+    func get(url: URL, headers: [String: String]) async throws -> TransportResponse {
+        try await post(url: url, body: Data(), headers: headers, method: "GET")
+    }
+
+    private func post(url: URL, body: Data, headers: [String: String], method: String) async throws -> TransportResponse {
+        switch record(RecordedRequest(url: url, body: body, headers: headers, method: method)) {
         case .status(let code): return TransportResponse(status: code, body: Data())
         case .json(let code, let json): return TransportResponse(status: code, body: Data(json.utf8))
         case .networkError: throw URLError(.notConnectedToInternet)

@@ -29,6 +29,10 @@ actor HogClient {
     /// results; nil (omitted) until resolution lands.
     private(set) var storeEnvironment: String?
 
+    /// Wall clock, injectable so the daily open ping and the churn survey
+    /// frequency cap are testable.
+    let now: @Sendable () -> Date
+
     /// Seconds before retry n (0-indexed). Injectable so tests don't sleep.
     private let backoff: @Sendable (Int) -> TimeInterval
 
@@ -58,6 +62,7 @@ actor HogClient {
         self.backoff = backoff
         self.enrollmentWait = enrollmentWait
         self.paywallTimeout = paywallTimeout
+        self.now = now
         let log = Logger(level: options.logLevel)
         self.log = log
         let dir = queueDirectory
@@ -83,12 +88,45 @@ actor HogClient {
 
     // MARK: - Operations
 
-    /// Called once from `configure()`: kicks off App Attest enrollment and
-    /// replays anything still queued from a previous launch.
+    /// Called once from `configure()`: kicks off App Attest enrollment,
+    /// replays anything still queued from a previous launch, and sends the
+    /// daily open ping.
     func start() async {
         ensureEnrollmentStarted()
         startStoreEnvironmentResolution()
         await flush()
+        await sendDailyOpen()
+    }
+
+    /// One `POST /api/sdk/v1/open` per device per UTC day, under the current
+    /// app user id (the anonymous id before login). The server creates the
+    /// customer on first open. Best-effort and never queued: a missed day is
+    /// simply retried on the next launch.
+    func sendDailyOpen() async {
+        let today = Self.utcDay(now())
+        guard storage.lastOpenDay != today else {
+            log.debug("open already sent today, skipped")
+            return
+        }
+        let payload = OpenPayload(
+            appUserId: appUserId,
+            bundleId: device.bundleId,
+            platform: device.platform,
+            osVersion: device.osVersion,
+            deviceModel: device.deviceModel,
+            locale: device.locale
+        )
+        guard let body = try? Payloads.encoder.encode(payload) else { return }
+        if await deliver(path: "/api/sdk/v1/open", body: body, attempts: 2) {
+            storage.lastOpenDay = today
+        }
+    }
+
+    static func utcDay(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     func identify(userId: String, attributes: [String: String]? = nil) async {
@@ -97,6 +135,9 @@ actor HogClient {
             log.warn("identify called with empty userId, ignored")
             return
         }
+        // The first identify after anonymous use carries the anonymous id so
+        // the server merges that customer (opens, purchases) into this one.
+        let anonymousId = storage.userId == nil ? storage.anonymousId : nil
         if storage.userId != trimmed {
             // The appUserId sent on paywall fetches is how purchases join
             // experiment results; a cached answer from the old identity
@@ -104,7 +145,9 @@ actor HogClient {
             storage.paywallCache = [:]
         }
         storage.userId = trimmed
-        await send("/api/sdk/v1/identify", identifyPayload(attributes: attributes))
+        var payload = identifyPayload(attributes: attributes)
+        payload.anonymousAppUserId = anonymousId
+        await send("/api/sdk/v1/identify", payload)
         await reattributeSentTransactions(to: trimmed)
         await flush()
     }
@@ -270,7 +313,7 @@ actor HogClient {
         }
     }
 
-    private func send(_ path: String, _ payload: some Encodable) async {
+    func send(_ path: String, _ payload: some Encodable) async {
         guard let body = try? Payloads.encoder.encode(payload) else {
             log.error("failed to encode payload for \(path)")
             return
@@ -285,7 +328,7 @@ actor HogClient {
 
     /// Enrolled requests carry the device token; everything else says why
     /// it doesn't, so the server can label the write.
-    private func requestHeaders() async -> [String: String] {
+    func requestHeaders() async -> [String: String] {
         var headers = ["Content-Type": "application/json"]
         switch await resolveAttestation() {
         case .enrolled(let token):

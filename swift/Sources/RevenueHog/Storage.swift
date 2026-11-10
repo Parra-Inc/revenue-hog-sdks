@@ -186,6 +186,38 @@ struct Storage: Sendable {
         }
     }
 
+    /// UTC day ("yyyy-MM-dd") of the last delivered open ping, so the SDK
+    /// sends at most one per device per day.
+    var lastOpenDay: String? {
+        get { store.get("rh_last_open_day") }
+        nonmutating set { store.set(newValue, forKey: "rh_last_open_day") }
+    }
+
+    /// When the churn survey last appeared on this device. Drives the local
+    /// frequency cap (the server cap only knows about answered surveys).
+    var churnSurveyShownAt: Date? {
+        get { store.get("rh_churn_shown_at").flatMap(Double.init).map(Date.init(timeIntervalSince1970:)) }
+        nonmutating set {
+            store.set(newValue.map { String($0.timeIntervalSince1970) }, forKey: "rh_churn_shown_at")
+        }
+    }
+
+    /// Original transaction ids whose auto-renew-off state already triggered
+    /// the survey. An id leaves the set when auto-renew comes back on, so
+    /// the next time it turns off counts as new.
+    var churnSurveyHandled: Set<String> {
+        get {
+            guard let raw = store.get("rh_churn_handled")?.data(using: .utf8),
+                  let ids = try? JSONDecoder().decode([String].self, from: raw)
+            else { return [] }
+            return Set(ids)
+        }
+        nonmutating set {
+            let data = try? JSONEncoder().encode(newValue.sorted())
+            store.set(data.flatMap { String(data: $0, encoding: .utf8) }, forKey: "rh_churn_handled")
+        }
+    }
+
     /// Forgets who the user is. Enrollment credentials are device-scoped,
     /// not user-scoped, so they survive.
     func resetIdentity() {

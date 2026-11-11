@@ -92,7 +92,7 @@ your delegate untouched.
 | `RevenueHog.setAttributes(map)` | Attaches flat string key/values to the user's profile. |
 | `RevenueHog.attributePurchase(purchaseToken, productId?)` | Stores purchase→user mapping (for future Play ingestion). |
 | `RevenueHog.billingListener(delegate?)` | Reflection-based `PurchasesUpdatedListener` wrapper (see above). |
-| `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
+| `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Queued requests and unsent events keep the user they were recorded under and still deliver. |
 | `RevenueHog.flush()` | Sends buffered events and retries the offline queue. |
 | `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat map of strings, numbers, booleans). Persisted, sent in batches of up to 50. |
 | `RevenueHog.sendFeedback(kind, message, rating?, data?, metadata?, onResult?)` | Sends in-app feedback (`FeedbackKind.BUG`, `IDEA`, `QUESTION`, `PRAISE`) with device context. `onResult` (SDK thread) gets `FeedbackResult.Sent(id)`, `Queued` or `Rejected(reason)`. |

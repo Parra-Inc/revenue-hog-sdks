@@ -135,6 +135,32 @@ who opens the app counts as a customer, not only subscribers. The first
 `identify` carries the anonymous id so the server merges that customer into
 the real user.
 
+## Feature parity
+
+| Feature | Swift | React Native | Kotlin |
+|---|---|---|---|
+| `configure` (one line) | yes | yes | yes |
+| `identify`, `setAttributes`, `reset` | yes | yes | yes |
+| `attributePurchase` | yes (`jws` optional) | yes (`jws` optional) | yes (Play token) |
+| Automatic purchase attribution | StoreKit 2 listener | `react-native-iap` hook | `billingListener` wrapper |
+| `flush` | yes (`async`) | yes (`Promise`) | yes |
+| `paywall`, `paywallShown` | yes | yes | yes (callback) |
+| `presentChurnSurvey` | yes | yes | yes |
+| Auto-renew-off survey trigger | automatic (StoreKit renewal info) | automatic on Android; `autoRenewChanged` on iOS | `checkPurchasesForChurn` / `autoRenewChanged` |
+| Daily open ping | automatic | automatic | automatic |
+| `track` (events) | yes | yes | yes |
+| `sendFeedback` | yes (`async`) | yes (`Promise`) | yes (callback) |
+| Apple Ads AdServices token | automatic, once per install | `sendAdServicesToken(token)` (app supplies token) | not applicable |
+| App Attest device auth | yes | no (unattested) | no (unattested) |
+
+Platform-justified differences: Swift reads StoreKit renewal info, so it
+needs no `autoRenewChanged`; React Native has no StoreKit access and takes
+renewal state from the app. AdServices is Apple-only, and a pure JS package
+cannot call `AAAttribution`, so React Native takes the token from the app
+and Kotlin has no equivalent. React Native exposes `churnSurveyPresenter`,
+`<ChurnSurveyHost />` and `churnSurveyLabels` because it has no built-in
+native UI; Swift and Kotlin ship native survey UI. Only iOS can attest.
+
 ## API contract
 
 All three SDKs speak the same endpoints:
@@ -152,6 +178,9 @@ GET  /api/sdk/v1/churn-survey?bundleId&platform&appUserId&locale
                             -> { survey: { version, title, options, other, randomize, allowAdditionalInfo, trigger, sampleRate } | null, show, reason? }
 POST /api/sdk/v1/churn-survey/response { bundleId, platform, appUserId, responseId, optionKey | otherText | skipped,
                             additionalInfo? (only when allowAdditionalInfo), surveyVersion, shownOrder, productId?, store?, environment?, occurredAt }
+POST /api/sdk/v1/events    { bundleId, platform, events: [{ name, properties?, at, appUserId }] }   (max 50 per batch)
+POST /api/sdk/v1/feedback  { bundleId, platform, appUserId, kind, message, rating?, data?, metadata? } -> { ok, id }
+POST /api/sdk/v1/adservices { bundleId, platform, installId, token, environment, appVersion?, storefront? }  (iOS)
 Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 

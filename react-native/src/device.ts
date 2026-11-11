@@ -9,6 +9,8 @@ export interface DeviceContext {
   osVersion?: string;
   deviceModel?: string;
   locale?: string;
+  /** Marketing version (CFBundleShortVersionString / versionName). */
+  appVersion?: string;
 }
 
 export function detectDevice(): DeviceContext {
@@ -29,19 +31,30 @@ export function detectDevice(): DeviceContext {
 
   try {
     // expo-managed apps
-    const expoApp = require('expo-application') as { applicationId?: string };
+    const expoApp = require('expo-application') as {
+      applicationId?: string;
+      nativeApplicationVersion?: string | null;
+    };
     if (expoApp?.applicationId) context.bundleId = expoApp.applicationId;
+    if (expoApp?.nativeApplicationVersion) context.appVersion = expoApp.nativeApplicationVersion;
   } catch {
     // not installed
   }
 
   try {
     const dInfo = require('react-native-device-info') as {
-      default?: { getBundleId?: () => string; getModel?: () => string };
+      default?: {
+        getBundleId?: () => string;
+        getModel?: () => string;
+        getVersion?: () => string;
+      };
     };
     const impl = dInfo?.default ?? (dInfo as never);
     if (!context.bundleId && typeof impl?.getBundleId === 'function') {
       context.bundleId = impl.getBundleId();
+    }
+    if (!context.appVersion && typeof impl?.getVersion === 'function') {
+      context.appVersion = impl.getVersion();
     }
     if (typeof impl?.getModel === 'function') {
       context.deviceModel = impl.getModel();

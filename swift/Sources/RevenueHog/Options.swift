@@ -32,16 +32,26 @@ public struct Options: Sendable {
     /// off, if the survey is enabled in the dashboard.
     public var enableChurnSurveyAutoTrigger: Bool
 
+    /// When `true` (default) the SDK reads the Apple Ads attribution token
+    /// (`AAAttribution.attributionToken()`) once per install, on the first
+    /// launch after `configure()`, and sends it to RevenueHog so the server
+    /// can resolve which Apple Ads campaign and keyword produced the install.
+    /// The token carries no user or device identifier and needs no ATT
+    /// prompt. Platforms without AdServices skip it silently.
+    public var enableAdServicesAttribution: Bool
+
     public init(
         baseURL: URL = URL(string: "https://revenuehog.dev")!,
         enableAutoAttribution: Bool = true,
         logLevel: LogLevel = .warn,
-        enableChurnSurveyAutoTrigger: Bool = true
+        enableChurnSurveyAutoTrigger: Bool = true,
+        enableAdServicesAttribution: Bool = true
     ) {
         self.baseURL = baseURL
         self.enableAutoAttribution = enableAutoAttribution
         self.logLevel = logLevel
         self.enableChurnSurveyAutoTrigger = enableChurnSurveyAutoTrigger
+        self.enableAdServicesAttribution = enableAdServicesAttribution
     }
 }
 

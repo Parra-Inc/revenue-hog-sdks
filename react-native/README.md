@@ -99,7 +99,10 @@ setPurchaseListener(({ results }) => {
 | `RevenueHog.setAttributes(attrs)` | Attaches a flat `Record<string, string>` to the user's profile. |
 | `RevenueHog.attributePurchase({ originalTransactionId, productId?, jws? })` | Links a purchase to the current user. `jws` is the StoreKit 2 signed transaction (iOS); when present the server verifies it against Apple's signature and it is sent in the `jws` field of `POST /api/sdk/v1/attribute`. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
-| `RevenueHog.flush()` | Retries the offline queue (e.g. on connectivity regained). |
+| `RevenueHog.flush()` | Sends buffered events and retries the offline queue (e.g. on connectivity regained). |
+| `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat properties). Persisted, sent in batches of up to 50. |
+| `RevenueHog.sendFeedback({ kind, message, rating?, data?, metadata? })` | Sends in-app feedback with device context. Resolves `{ status: 'sent', id? }`, `{ status: 'queued' }` or `{ status: 'rejected', reason }`. Never rejects. |
+| `RevenueHog.sendAdServicesToken(token, { environment?, storefront?, appVersion? }?)` | iOS only: stores the Apple Ads attribution token, once per install (see below). |
 | `RevenueHog.presentChurnSurvey({ productId? })` | Shows the churn survey through your `churnSurveyPresenter` (or the built-in sheet when `<ChurnSurveyHost />` is mounted) and records the answer. Resolves `{ type: 'option' \| 'other' \| 'skipped' \| 'notShown' }`. |
 | `RevenueHog.autoRenewChanged({ originalTransactionId, productId?, willAutoRenew })` | Reports a subscription's auto-renew state; the survey shows once per cancellation. |
 
@@ -119,6 +122,56 @@ RevenueHog.configure({
 
 `StorageAdapter` is just `{ getItem, setItem, removeItem }` returning
 promises: MMKV wrappers, SecureStore, whatever you like.
+
+## Events, feedback and Apple Ads
+
+```ts
+RevenueHog.track('onboarding_step', { step: 'welcome', index: 0 });
+RevenueHog.track('trial_started');
+
+const result = await RevenueHog.sendFeedback({
+  kind: 'bug', // 'bug' | 'idea' | 'question' | 'praise'
+  message: 'Export crashes on iPad',
+  rating: 2,
+  data: { screen: 'export' },
+});
+```
+
+Event names are snake_case, start with a letter, at most 48 characters, and
+may not start with `rh_`. A batch goes out when 20 events are waiting, about
+10 seconds after the first, on `flush()`, and on the next launch; offline
+batches wait in the persistent queue (install async-storage so it survives
+relaunches). Feedback adds `osVersion`, `deviceModel`, `locale` and
+`appVersion` to `metadata`; `message` is required (max 5000 characters),
+`rating` is 1 to 5.
+
+**Apple Ads (AdServices).** This package is pure JS, so it cannot call
+`AAAttribution.attributionToken()` itself (the Swift SDK does this
+automatically). Read the token in a few lines of native code and hand it
+over once at launch. With Expo, a local module (`npx create-expo-module
+--local adservices`) whose Swift function is:
+
+```swift
+import AdServices
+
+AsyncFunction("attributionToken") { () -> String? in
+  if #available(iOS 14.3, *) { return try? AAAttribution.attributionToken() }
+  return nil
+}
+```
+
+Then in JS (iOS only; the call is ignored on Android):
+
+```ts
+const token = await AdServices.attributionToken();
+if (token) RevenueHog.sendAdServicesToken(token);
+```
+
+A bare React Native app can expose the same function through a native
+module. The SDK sends the token once per install with the install id and
+app version; `environment` defaults from `storeEnvironment` in
+`configure()`, else `__DEV__`. The token carries no user identifier and
+needs no ATT prompt.
 
 ## Churn survey
 

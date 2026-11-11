@@ -3,7 +3,36 @@
 All three SDKs (Swift package tag, `com.revenuehog:revenuehog-android`,
 `@revenuehog/react-native`) share one version number.
 
-## 0.4.0 (unreleased)
+## 0.5.0 (unreleased)
+
+### Added
+- Events on all three SDKs: `track(name, properties?)` records funnel
+  milestones to `POST /api/sdk/v1/events`. Events are persisted, sent in
+  batches of up to 50 (when 20 are waiting, about 10 seconds after the
+  first, on `flush()` and on the next launch), and queued when offline.
+  Names are validated on device (snake_case, max 48 characters, no `rh_`).
+  Swift adds a `PropertyValue` type (string, int, double, bool literals).
+- In-app feedback on all three SDKs: Swift `sendFeedback(kind:message:...)
+  async -> FeedbackResult`, React Native `sendFeedback(input):
+  Promise<FeedbackResult>`, Kotlin `sendFeedback(kind, message, ...,
+  onResult)`. Kinds are bug, idea, question and praise; device context
+  (OS version, model, locale, app version) is merged into `metadata`;
+  offline feedback is queued and delivered later.
+- Apple Ads attribution: the Swift SDK reads
+  `AAAttribution.attributionToken()` once per install and sends it to
+  `POST /api/sdk/v1/adservices` (`Options.enableAdServicesAttribution`,
+  default `true`). React Native gains `sendAdServicesToken(token, options?)`
+  for a token the app reads natively. Not applicable on Android.
+- Swift: public `RevenueHog.flush() async`, and `attributePurchase` takes an
+  optional `jws`, matching React Native.
+
+### Changed
+- `flush()` on all three SDKs also sends buffered events.
+- Feedback and AdServices requests carry the app version (Swift
+  `CFBundleShortVersionString`, Kotlin `versionName`, React Native via
+  `expo-application` or `react-native-device-info`).
+
+## 0.4.0
 
 ### Added
 - React Native: optional built-in churn survey UI. Mount `<ChurnSurveyHost />`

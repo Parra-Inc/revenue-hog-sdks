@@ -8,6 +8,8 @@ struct DeviceInfo: Sendable {
     var osVersion: String?
     var deviceModel: String?
     var locale: String?
+    /// `CFBundleShortVersionString`, sent with feedback and AdServices.
+    var appVersion: String? = nil
 
     /// Compile-time simulator flag, passed through an init parameter so
     /// tests can exercise the simulator path on any host.
@@ -32,7 +34,8 @@ struct DeviceInfo: Sendable {
             platform: "ios",
             osVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
             deviceModel: model,
-            locale: Locale.current.identifier
+            locale: Locale.current.identifier,
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         )
     }
 }

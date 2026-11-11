@@ -11,7 +11,7 @@ actor HogClient {
     let options: Options
     let transport: Transport
     let storage: Storage
-    private let queue: DiskQueue
+    let queue: DiskQueue
     let device: DeviceInfo
     let log: Logger
     private let attestation: Attestation
@@ -41,6 +41,17 @@ actor HogClient {
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var reenrolledAfter401 = false
 
+    /// Reads the Apple Ads attribution token. Injectable so tests never
+    /// touch AdServices; nil means "no token this launch, try next launch".
+    let adServicesToken: @Sendable () async -> String?
+
+    /// The App Store storefront country code, sent with the AdServices token.
+    let storefront: @Sendable () async -> String?
+
+    /// How long a tracked event may sit in the buffer before a batch goes out.
+    let eventFlushDelay: TimeInterval
+    var eventFlushTask: Task<Void, Never>?
+
     init(
         options: Options,
         transport: Transport = URLSessionTransport(),
@@ -53,8 +64,14 @@ actor HogClient {
         enrollmentWait: TimeInterval = 10,
         paywallTimeout: TimeInterval = 2.5,
         now: @escaping @Sendable () -> Date = { Date() },
-        backoff: @escaping @Sendable (Int) -> TimeInterval = { pow(2, Double($0)) * 0.5 }
+        backoff: @escaping @Sendable (Int) -> TimeInterval = { pow(2, Double($0)) * 0.5 },
+        adServicesToken: @escaping @Sendable () async -> String? = AdServicesSource.token,
+        storefront: @escaping @Sendable () async -> String? = AdServicesSource.storefront,
+        eventFlushDelay: TimeInterval = 10
     ) {
+        self.adServicesToken = adServicesToken
+        self.storefront = storefront
+        self.eventFlushDelay = eventFlushDelay
         self.options = options
         self.transport = transport
         self.storage = Storage(store: store, secure: secureStore)
@@ -94,8 +111,18 @@ actor HogClient {
     func start() async {
         ensureEnrollmentStarted()
         startStoreEnvironmentResolution()
-        await flush()
+        await flushAll()
         await sendDailyOpen()
+        if options.enableAdServicesAttribution {
+            await sendAdServicesTokenIfNeeded()
+        }
+    }
+
+    /// Hands buffered events to the request queue, then replays the queue.
+    /// This is what the public `RevenueHog.flush()` runs.
+    func flushAll() async {
+        await flushEvents()
+        await flush()
     }
 
     /// One `POST /api/sdk/v1/open` per device per UTC day, under the current
@@ -181,6 +208,8 @@ actor HogClient {
     func reset() {
         storage.resetIdentity()
         storage.paywallCache = [:]
+        eventFlushTask?.cancel()
+        eventFlushTask = nil
         queue.clear()
         log.info("reset, new anonymous id issued")
     }
@@ -342,6 +371,13 @@ actor HogClient {
     /// Returns true when delivered (or permanently rejected; a request the
     /// server will never accept is dropped, not retried forever).
     func deliver(path: String, body: Data, attempts: Int) async -> Bool {
+        await deliverResponse(path: path, body: body, attempts: attempts) != nil
+    }
+
+    /// The final response when delivered (2xx) or permanently rejected
+    /// (anything the server will never accept); nil when the request should
+    /// be queued and retried later (network error, 429, 5xx).
+    func deliverResponse(path: String, body: Data, attempts: Int) async -> TransportResponse? {
         let url = options.baseURL.appendingPathComponent(path)
         var attempt = 0
         while attempt < attempts {
@@ -350,11 +386,11 @@ actor HogClient {
                 let response = try await transport.post(url: url, body: body, headers: headers)
                 switch response.status {
                 case 200..<300:
-                    return true
+                    return response
                 case 401:
                     guard headers["Authorization"] != nil else {
                         log.error("401 from \(path) while unattested, dropped")
-                        return true // never accepted; don't retry forever
+                        return response // never accepted; don't retry forever
                     }
                     handleUnauthorized()
                     continue // resend with refreshed auth; bounded by handleUnauthorized
@@ -362,7 +398,7 @@ actor HogClient {
                     log.warn("\(response.status) from \(path), backing off")
                 default:
                     log.error("\(response.status) from \(path), dropped")
-                    return true
+                    return response
                 }
             } catch {
                 log.debug("network error on \(path): \(error.localizedDescription)")
@@ -372,6 +408,6 @@ actor HogClient {
                 try? await Task.sleep(nanoseconds: UInt64(backoff(attempt - 1) * 1_000_000_000))
             }
         }
-        return false
+        return nil
     }
 }

@@ -93,7 +93,9 @@ your delegate untouched.
 | `RevenueHog.attributePurchase(purchaseToken, productId?)` | Stores purchase→user mapping (for future Play ingestion). |
 | `RevenueHog.billingListener(delegate?)` | Reflection-based `PurchasesUpdatedListener` wrapper (see above). |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
-| `RevenueHog.flush()` | Retries the offline queue. |
+| `RevenueHog.flush()` | Sends buffered events and retries the offline queue. |
+| `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat map of strings, numbers, booleans). Persisted, sent in batches of up to 50. |
+| `RevenueHog.sendFeedback(kind, message, rating?, data?, metadata?, onResult?)` | Sends in-app feedback (`FeedbackKind.BUG`, `IDEA`, `QUESTION`, `PRAISE`) with device context. `onResult` (SDK thread) gets `FeedbackResult.Sent(id)`, `Queued` or `Rejected(reason)`. |
 | `RevenueHog.presentChurnSurvey(activity, productId?, onResult?)` | Shows the churn survey dialog now and records the answer. |
 | `RevenueHog.checkPurchasesForChurn(activity, purchases)` | Pass Play Billing purchases; shows the survey once when a subscription's auto-renew turns off. |
 | `RevenueHog.autoRenewChanged(activity, purchaseToken, willAutoRenew, productId?)` | Same, for apps that track renewal state themselves. |
@@ -106,6 +108,23 @@ RevenueHog.configure(this, Options(
     logLevel = LogLevel.DEBUG,                // default WARN
 ))
 ```
+
+## Events and feedback
+
+```kotlin
+RevenueHog.track("onboarding_step", mapOf("step" to "welcome", "index" to 0))
+RevenueHog.sendFeedback(FeedbackKind.BUG, "Export crashes", rating = 2) { result -> }
+```
+
+Same rules as the other SDKs: snake_case event names (max 48 characters,
+no `rh_` prefix), batches of up to 50 sent when 20 are waiting, about 10
+seconds after the first, on `flush()` and on the next launch. Feedback adds
+`osVersion`, `deviceModel`, `locale` and `appVersion` to `metadata`; offline
+feedback is queued and delivered later.
+
+**Apple Ads (AdServices) does not apply on Android.** It is an Apple-only
+attribution framework, so there is no `sendAdServicesToken` here. Use Play
+Install Referrer or your ad network's SDK for Android install attribution.
 
 ## Churn survey
 

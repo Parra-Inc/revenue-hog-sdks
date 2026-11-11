@@ -64,8 +64,10 @@ export function makeClient(
         osVersion: '17.0.0',
         deviceModel: 'iPhone15,2',
         locale: 'en-US',
+        appVersion: '2.1.0',
       },
       backoffMs: () => 0,
+      eventFlushDelayMs: -1,
       ...(now ? { now } : {}),
     }
   );

@@ -21,11 +21,26 @@ internal class HogClient(
     logSink: ((String) -> Unit)? = null,
     /** Wall clock in ms. Tests inject a fixed one. */
     private val now: () -> Long = { System.currentTimeMillis() },
+    /** How long a tracked event may wait before its batch goes out. Negative disables the timer. */
+    private val eventFlushDelayMs: Long = 10_000,
+    /** Runs a task after a delay, off the SDK thread. Tests inject a no-op or an immediate one. */
+    private val scheduler: (Long, () -> Unit) -> Unit = { delay, task ->
+        Thread({
+            try {
+                Thread.sleep(delay)
+                task()
+            } catch (_: Throwable) {
+            }
+        }, "revenuehog-events").apply { isDaemon = true }.start()
+    },
 ) {
     private val log = logSink
         ?.let { Logger(options.logLevel, it) }
         ?: Logger(options.logLevel)
     private val queue = RequestQueue(store)
+
+    @Volatile
+    private var eventFlushScheduled = false
 
     // ── public surface (all fire-and-forget, all crash-proof) ──────────────
 
@@ -64,6 +79,7 @@ internal class HogClient(
         store.put(KEY_USER_ID, null)
         store.put(KEY_SENT_TXNS, null)
         store.put(KEY_PAYWALL_CACHE, null)
+        store.put(KEY_EVENT_BUFFER, null)
         // rh_install_id survives on purpose: it keys paywall experiment
         // assignment to the DEVICE, not to a user.
         store.put(KEY_ANON_ID, freshAnonId())
@@ -71,7 +87,61 @@ internal class HogClient(
         log.info("reset — new anonymous id issued")
     }
 
-    fun flush() = run { flushQueue() }
+    /** Sends buffered events, then replays the offline queue. */
+    fun flush() = run {
+        flushEvents()
+        flushQueue()
+    }
+
+    /**
+     * Buffers a signpost event. Batches (max 50) go out when 20 are waiting,
+     * after [eventFlushDelayMs], on [flush] and on the next launch.
+     */
+    fun track(name: String, properties: Map<String, Any?>? = null) = run {
+        val valid = EventRules.validName(name)
+        if (valid == null) {
+            log.warn("track: invalid event name \"$name\" (snake_case, max 48 chars, no rh_ prefix), dropped")
+            return@run
+        }
+        var props = EventRules.properties(properties)
+        if (props != null && EventRules.bytes(props) > EventRules.MAX_PROPERTIES_BYTES) {
+            log.warn("track($valid): properties over ${EventRules.MAX_PROPERTIES_BYTES} bytes, sent without them")
+            props = null
+        }
+        val event = JSONObject()
+            .put("name", valid)
+            .put("at", now())
+            .put("appUserId", appUserId())
+        props?.let { event.put("properties", it) }
+        val buffer = eventBuffer() + event
+        saveEventBuffer(buffer.takeLast(EventRules.MAX_BUFFERED))
+        if (buffer.size >= EventRules.BATCH_THRESHOLD) flushEvents() else scheduleEventFlush()
+    }
+
+    /**
+     * Sends in-app feedback attributed to the current user, with device
+     * context merged into metadata. [onResult] runs on the SDK thread.
+     */
+    fun sendFeedback(
+        kind: FeedbackKind,
+        message: String,
+        rating: Int? = null,
+        data: Map<String, Any?>? = null,
+        metadata: Map<String, Any?>? = null,
+        onResult: ((FeedbackResult) -> Unit)? = null,
+    ) = run {
+        val result = try {
+            sendFeedbackNow(kind, message, rating, data, metadata)
+        } catch (t: Throwable) {
+            log.error("sendFeedback failed: ${t.message}")
+            FeedbackResult.Rejected("internal error")
+        }
+        try {
+            onResult?.invoke(result)
+        } catch (t: Throwable) {
+            log.error("sendFeedback onResult threw: ${t.message}")
+        }
+    }
 
     /**
      * Which SKUs this install's paywall should offer, as an ORDERED list
@@ -255,6 +325,109 @@ internal class HogClient(
 
     // ── internals (executor thread only) ────────────────────────────────────
 
+    private fun sendFeedbackNow(
+        kind: FeedbackKind,
+        message: String,
+        rating: Int?,
+        data: Map<String, Any?>?,
+        metadata: Map<String, Any?>?,
+    ): FeedbackResult {
+        fun reject(reason: String): FeedbackResult {
+            log.warn("sendFeedback: $reason")
+            return FeedbackResult.Rejected(reason)
+        }
+        val text = message.trim()
+        if (text.isEmpty()) return reject("message is required")
+        if (text.length > EventRules.MAX_FEEDBACK_MESSAGE) {
+            return reject("message is too long (max ${EventRules.MAX_FEEDBACK_MESSAGE})")
+        }
+        if (rating != null && rating !in 1..5) return reject("rating must be an integer from 1 to 5")
+        val meta = linkedMapOf<String, Any?>()
+        device.osVersion?.let { meta["osVersion"] = it }
+        device.deviceModel?.let { meta["deviceModel"] = it }
+        device.locale?.let { meta["locale"] = it }
+        device.appVersion?.let { meta["appVersion"] = it }
+        metadata?.let { meta.putAll(it) }
+        val dataJson = data?.let { EventRules.objectOf(it) }
+        if (dataJson != null && EventRules.bytes(dataJson) > EventRules.MAX_FEEDBACK_JSON_BYTES) {
+            return reject("data is too large (max ${EventRules.MAX_FEEDBACK_JSON_BYTES} bytes)")
+        }
+        val metaJson = EventRules.objectOf(meta)
+        if (EventRules.bytes(metaJson) > EventRules.MAX_FEEDBACK_JSON_BYTES) {
+            return reject("metadata is too large (max ${EventRules.MAX_FEEDBACK_JSON_BYTES} bytes)")
+        }
+        val json = JSONObject()
+            .put("bundleId", device.bundleId)
+            .put("platform", device.platform)
+            .put("appUserId", appUserId())
+            .put("kind", kind.wire)
+            .put("message", text)
+        rating?.let { json.put("rating", it) }
+        dataJson?.let { json.put("data", it) }
+        if (meta.isNotEmpty()) json.put("metadata", metaJson)
+        val body = json.toString()
+        val response = deliverResponse(Payloads.FEEDBACK_PATH, body, MAX_ATTEMPTS)
+        if (response == null) {
+            queue.append(PendingRequest(Payloads.FEEDBACK_PATH, body))
+            log.info("queued ${Payloads.FEEDBACK_PATH} for later delivery")
+            return FeedbackResult.Queued
+        }
+        if (response.status !in 200..299) return FeedbackResult.Rejected("HTTP ${response.status}")
+        flushQueue()
+        val id = try {
+            JSONObject(response.body).optString("id").ifEmpty { null }
+        } catch (_: Throwable) {
+            null
+        }
+        return FeedbackResult.Sent(id)
+    }
+
+    private fun eventBuffer(): List<JSONObject> = try {
+        val arr = org.json.JSONArray(store.get(KEY_EVENT_BUFFER) ?: "[]")
+        (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+    } catch (_: Throwable) {
+        emptyList()
+    }
+
+    private fun saveEventBuffer(events: List<JSONObject>) {
+        store.put(KEY_EVENT_BUFFER, if (events.isEmpty()) null else org.json.JSONArray(events).toString())
+    }
+
+    /** Moves the buffer out in batches of at most 50; undeliverable batches are queued. */
+    private fun flushEvents() {
+        while (true) {
+            val buffer = eventBuffer()
+            if (buffer.isEmpty()) return
+            val batch = buffer.take(EventRules.MAX_BATCH)
+            saveEventBuffer(buffer.drop(batch.size))
+            val body = JSONObject()
+                .put("bundleId", device.bundleId)
+                .put("platform", device.platform)
+                .put("events", org.json.JSONArray(batch))
+                .toString()
+            if (!deliver(Payloads.EVENTS_PATH, body, MAX_ATTEMPTS)) {
+                queue.append(PendingRequest(Payloads.EVENTS_PATH, body))
+                log.info("queued ${Payloads.EVENTS_PATH} for later delivery")
+            }
+        }
+    }
+
+    private fun scheduleEventFlush() {
+        if (eventFlushScheduled || eventFlushDelayMs < 0) return
+        eventFlushScheduled = true
+        try {
+            scheduler(eventFlushDelayMs) {
+                run {
+                    eventFlushScheduled = false
+                    flushEvents()
+                }
+            }
+        } catch (t: Throwable) {
+            eventFlushScheduled = false
+            log.debug("event timer failed: ${t.message}")
+        }
+    }
+
     /** The id events are reported under: the identified user, else the anon id. */
     fun appUserId(): String {
         store.get(KEY_USER_ID)?.let { return it }
@@ -408,6 +581,39 @@ internal class HogClient(
      * True when delivered — or permanently rejected (a request the server
      * will never accept is dropped, not retried forever).
      */
+    /**
+     * The final response when delivered (2xx) or permanently rejected; null
+     * when the request should be queued (network error, 429, 5xx).
+     */
+    private fun deliverResponse(path: String, body: String, attempts: Int): TransportResponse? {
+        val url = options.baseUrl.trimEnd('/') + path
+        val headers = mapOf("Content-Type" to "application/json")
+        for (attempt in 0 until attempts) {
+            try {
+                val response = transport.postForBody(url, body, headers, 15_000)
+                when (response.status) {
+                    in 200..299 -> return response
+                    429, in 500..599 -> log.warn("${response.status} from $path, backing off")
+                    else -> {
+                        log.error("${response.status} from $path, dropped")
+                        return response
+                    }
+                }
+            } catch (t: Throwable) {
+                log.debug("network error on $path: ${t.message}")
+            }
+            if (attempt < attempts - 1) {
+                try {
+                    sleep(backoffMs(attempt))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return null
+                }
+            }
+        }
+        return null
+    }
+
     private fun deliver(path: String, body: String, attempts: Int): Boolean {
         val url = options.baseUrl.trimEnd('/') + path
         val headers = mapOf("Content-Type" to "application/json")
@@ -462,6 +668,7 @@ internal class HogClient(
         const val KEY_LAST_OPEN_DAY = "rh_last_open_day"
         const val KEY_CHURN_SHOWN_AT = "rh_churn_shown_at"
         const val KEY_CHURN_HANDLED = "rh_churn_handled"
+        const val KEY_EVENT_BUFFER = "rh_event_buffer"
         const val MAX_ATTEMPTS = 3
         const val PAYWALL_TIMEOUT_MS = 2_500
     }

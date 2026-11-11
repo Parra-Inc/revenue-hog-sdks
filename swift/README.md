@@ -21,7 +21,7 @@ https://github.com/Parra-Inc/revenue-hog-sdks
 Select the `RevenueHog` product. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.4.0")
+.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.5.0")
 ```
 
 Then add the **App Attest capability** to your app target
@@ -90,7 +90,10 @@ Apple's sandbox automatically, so `production` is always the right value.
 | `RevenueHog.configure(options:)` | Sets up the SDK and enrolls the device. Call once at launch. Starts the StoreKit 2 listener unless `options.enableAutoAttribution` is `false`. |
 | `RevenueHog.identify(userId:)` | Links the anonymous id (and everything reported under it) to your user id. |
 | `RevenueHog.setAttributes(_:)` | Attaches a flat `[String: String]` map to the user's profile (plan, cohort, …). |
-| `RevenueHog.attributePurchase(originalTransactionId:productId:)` | Manual attribution. Only needed when auto-attribution is off. |
+| `RevenueHog.attributePurchase(originalTransactionId:productId:jws:)` | Manual attribution. Only needed when auto-attribution is off. `jws` is the StoreKit 2 signed transaction, verified server-side. |
+| `RevenueHog.track(_:properties:)` | Records a funnel milestone (snake_case name, flat `[String: PropertyValue]` properties). Buffered on disk, sent in batches of up to 50. |
+| `await RevenueHog.sendFeedback(kind:message:rating:data:metadata:)` | Sends in-app feedback (`.bug`, `.idea`, `.question`, `.praise`) with device context. Returns `.sent(id:)`, `.queued` (offline, delivered later) or `.rejected(reason:)`. Never throws. |
+| `await RevenueHog.flush()` | Sends buffered events and retries the offline queue now. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Device enrollment survives. |
 | `RevenueHog.presentChurnSurvey(productId:)` | Shows the churn survey sheet now and records the answer. Returns `.option(key, additionalInfo:)`, `.other(text, additionalInfo:)`, `.skipped` or `.notShown`. `additionalInfo` is the optional "Tell us more" text, set only when the survey's Allow additional info setting is on. |
 
@@ -101,9 +104,41 @@ RevenueHog.configure(options: Options(
     baseURL: URL(string: "https://hog.internal.example")!, // self-hosted / dev
     enableAutoAttribution: true,                            // default
     logLevel: .debug,                                       // default .warn
-    enableChurnSurveyAutoTrigger: true                      // default
+    enableChurnSurveyAutoTrigger: true,                     // default
+    enableAdServicesAttribution: true                       // default
 ))
 ```
+
+## Events, feedback and Apple Ads
+
+```swift
+RevenueHog.track("onboarding_step", properties: ["step": "welcome", "index": 0])
+RevenueHog.track("trial_started")
+
+let result = await RevenueHog.sendFeedback(
+    kind: .bug, message: "Export crashes on iPad", rating: 2,
+    data: ["screen": "export"]
+)
+```
+
+Event names are snake_case, start with a letter, at most 48 characters, and
+may not start with `rh_`; invalid names are dropped with a warning. The
+server keeps at most 32 distinct names per app. A batch goes out when 20
+events are waiting, about 10 seconds after the first one, on `flush()`, and
+on the next launch; offline batches wait in the persistent queue.
+
+Feedback adds `osVersion`, `deviceModel`, `locale` and `appVersion` to
+`metadata` (your own keys win). `message` is required (max 5000
+characters), `rating` is 1 to 5, and `data`/`metadata` are limited to 8 KB
+of JSON each.
+
+**Apple Ads (AdServices).** On the first launch after `configure()` the SDK
+reads `AAAttribution.attributionToken()` (iOS 14.3+, macOS 11.1+; skipped
+where AdServices is unavailable) and sends it once per install to
+`POST /api/sdk/v1/adservices` with the install id, app version, storefront
+and environment (`production`, `sandbox` or `debug`). The server resolves
+the campaign with Apple later. The token carries no user identifier and
+needs no ATT prompt. Turn it off with `enableAdServicesAttribution: false`.
 
 ## Churn survey
 

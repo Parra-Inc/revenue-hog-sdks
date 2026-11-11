@@ -151,13 +151,14 @@ enum TestSupport {
         isSimulator: Bool = false,
         enrollmentWait: TimeInterval = 5,
         paywallTimeout: TimeInterval = 5,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        options: Options = Options(baseURL: URL(string: "https://example.test")!, logLevel: .silent),
+        adServicesToken: @escaping @Sendable () async -> String? = { nil },
+        storefront: @escaping @Sendable () async -> String? = { nil },
+        eventFlushDelay: TimeInterval = 3_600
     ) -> HogClient {
         HogClient(
-            options: Options(
-                baseURL: URL(string: "https://example.test")!,
-                logLevel: .silent
-            ),
+            options: options,
             transport: transport,
             store: store,
             secureStore: secureStore,
@@ -168,13 +169,17 @@ enum TestSupport {
                 platform: "ios",
                 osVersion: "17.0.0",
                 deviceModel: "iPhone15,2",
-                locale: "en_US"
+                locale: "en_US",
+                appVersion: "2.1.0"
             ),
             isSimulator: isSimulator,
             enrollmentWait: enrollmentWait,
             paywallTimeout: paywallTimeout,
             now: now,
-            backoff: { _ in 0 }
+            backoff: { _ in 0 },
+            adServicesToken: adServicesToken,
+            storefront: storefront,
+            eventFlushDelay: eventFlushDelay
         )
     }
 }

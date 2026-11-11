@@ -150,4 +150,27 @@ class EventsFeedbackTest {
         assertEquals(FeedbackResult.Rejected("HTTP 400"), result)
         assertTrue(RequestQueue(store).load().isEmpty())
     }
+
+    @Test
+    fun `reset keeps queued feedback and buffered events under the original user`() {
+        val store = MemoryStore()
+        val net = TestSupport.NETWORK_ERROR
+        val transport = FakeTransport(200, net, net, net)
+        val client = TestSupport.makeClient(transport, store)
+        client.identify("user_old")
+        var result: FeedbackResult? = null
+        client.sendFeedback(FeedbackKind.BUG, "broken") { result = it }
+        assertEquals(FeedbackResult.Queued, result)
+        client.track("tap")
+
+        client.reset()
+        assertEquals(listOf("/api/sdk/v1/feedback"), RequestQueue(store).load().map { it.path })
+
+        client.flush()
+        assertEquals("user_old", transport.at("/feedback").last().json.getString("appUserId"))
+        val events = transport.at("/events").single().json.getJSONArray("events")
+        assertEquals("user_old", events.getJSONObject(0).getString("appUserId"))
+        assertTrue(RequestQueue(store).load().isEmpty())
+        assertTrue(client.appUserId().startsWith("\$anon_"))
+    }
 }

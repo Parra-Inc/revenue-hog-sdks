@@ -205,12 +205,11 @@ actor HogClient {
     /// Forgets the identified user and anonymous id (e.g. on logout).
     /// Device enrollment survives; it is not tied to a user, and so does
     /// the installId (it keys experiment assignment to the DEVICE).
+    /// Only identity rotates: queued requests and buffered events keep the
+    /// appUserId they were created with and still deliver.
     func reset() {
         storage.resetIdentity()
         storage.paywallCache = [:]
-        eventFlushTask?.cancel()
-        eventFlushTask = nil
-        queue.clear()
         log.info("reset, new anonymous id issued")
     }
 
@@ -222,6 +221,7 @@ actor HogClient {
         while !pending.isEmpty {
             let item = pending[0]
             guard await deliver(path: item.path, body: item.body, attempts: 1) else { break }
+            if item.path == Self.adServicesPath { storage.adServicesSent = true }
             pending.removeFirst()
         }
         queue.save(pending)

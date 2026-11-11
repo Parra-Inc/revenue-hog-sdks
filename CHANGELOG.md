@@ -3,7 +3,23 @@
 All three SDKs (Swift package tag, `com.revenuehog:revenuehog-android`,
 `@revenuehog/react-native`) share one version number.
 
-## 0.5.0 (unreleased)
+## 0.5.1 (unreleased)
+
+### Fixed
+- `reset()` no longer discards pending work on any SDK. It only rotates
+  identity: queued feedback, AdServices and event requests, and buffered
+  events, keep the `appUserId` they were recorded under and still deliver
+  after logout. Previously `reset()` cleared the offline queue and the event
+  buffer.
+- AdServices (Swift automatic capture, React Native `sendAdServicesToken`):
+  the once-per-install sent flag is now set only after the server answers
+  (2xx, or a permanent rejection it will never accept), including when a
+  queued request lands on a later flush. While a request is queued no
+  duplicate is enqueued, and if the queue drops it the token is sent again
+  on a later launch or call. Previously the flag was set as soon as the
+  request was queued, so a dropped request was never retried.
+
+## 0.5.0 (2026-11-11)
 
 ### Added
 - Events on all three SDKs: `track(name, properties?)` records funnel

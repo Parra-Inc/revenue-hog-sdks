@@ -79,12 +79,11 @@ internal class HogClient(
         store.put(KEY_USER_ID, null)
         store.put(KEY_SENT_TXNS, null)
         store.put(KEY_PAYWALL_CACHE, null)
-        store.put(KEY_EVENT_BUFFER, null)
         // rh_install_id survives on purpose: it keys paywall experiment
-        // assignment to the DEVICE, not to a user.
+        // assignment to the DEVICE, not to a user. Queued requests and
+        // buffered events keep the appUserId they were created with.
         store.put(KEY_ANON_ID, freshAnonId())
-        queue.clear()
-        log.info("reset — new anonymous id issued")
+        log.info("reset, new anonymous id issued")
     }
 
     /** Sends buffered events, then replays the offline queue. */

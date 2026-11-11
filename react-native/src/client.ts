@@ -200,13 +200,11 @@ export class HogClient {
       await this.storage.removeItem('rh_user_id');
       await this.storage.removeItem('rh_sent_txns');
       await this.storage.removeItem(PAYWALL_CACHE_KEY);
-      await this.storage.removeItem(EVENT_BUFFER_KEY);
-      this.clearEventTimer();
       // rh_install_id survives on purpose: it keys experiment assignment
-      // to the DEVICE, not to a user.
+      // to the DEVICE, not to a user. Queued requests and buffered events
+      // keep the appUserId they were created with and still deliver.
       await this.storage.setItem('rh_anon_id', freshAnonId());
-      await this.queue.clear();
-      this.log.info('reset — new anonymous id issued');
+      this.log.info('reset, new anonymous id issued');
     });
   }
 
@@ -283,9 +281,15 @@ export class HogClient {
         this.log.debug('AdServices token already sent for this install, skipped');
         return;
       }
+      // Already waiting in the queue: flushQueue sets the flag when it lands.
+      // If the queue later drops it, the flag stays unset and a later call
+      // sends the token again.
+      if ((await this.queue.load()).some((p) => p.path === ADSERVICES_PATH)) {
+        this.log.debug('AdServices token already queued, skipped');
+        return;
+      }
       const appVersion = options.appVersion ?? this.device.appVersion;
-      await this.storage.setItem(ADSERVICES_SENT_KEY, '1');
-      await this.send(ADSERVICES_PATH, {
+      const body = JSON.stringify({
         bundleId: this.device.bundleId ?? 'unknown',
         platform: this.device.platform,
         installId: await this.installId(),
@@ -294,6 +298,15 @@ export class HogClient {
         ...(appVersion ? { appVersion } : {}),
         ...(options.storefront ? { storefront: options.storefront } : {}),
       });
+      // The flag is set only once the server answered (2xx, or a permanent
+      // rejection it will never accept).
+      if (await this.deliver(ADSERVICES_PATH, body, MAX_ATTEMPTS)) {
+        await this.storage.setItem(ADSERVICES_SENT_KEY, '1');
+        await this.flushQueue();
+      } else {
+        await this.queue.append({ path: ADSERVICES_PATH, body });
+        this.log.info(`queued ${ADSERVICES_PATH} for later delivery`);
+      }
     });
   }
 
@@ -831,6 +844,7 @@ export class HogClient {
     while (pending.length > 0) {
       const item = pending[0] as PendingRequest;
       if (!(await this.deliver(item.path, item.body, 1))) break;
+      if (item.path === ADSERVICES_PATH) await this.storage.setItem(ADSERVICES_SENT_KEY, '1');
       pending = pending.slice(1);
     }
     await this.queue.save(pending);

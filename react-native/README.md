@@ -98,7 +98,7 @@ setPurchaseListener(({ results }) => {
 | `RevenueHog.identify(userId)` | Links the anonymous id (and everything reported under it) to your user id. |
 | `RevenueHog.setAttributes(attrs)` | Attaches a flat `Record<string, string>` to the user's profile. |
 | `RevenueHog.attributePurchase({ originalTransactionId, productId?, jws? })` | Links a purchase to the current user. `jws` is the StoreKit 2 signed transaction (iOS); when present the server verifies it against Apple's signature and it is sent in the `jws` field of `POST /api/sdk/v1/attribute`. |
-| `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. |
+| `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Queued requests and unsent events keep the user they were recorded under and still deliver. |
 | `RevenueHog.flush()` | Sends buffered events and retries the offline queue (e.g. on connectivity regained). |
 | `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat properties). Persisted, sent in batches of up to 50. |
 | `RevenueHog.sendFeedback({ kind, message, rating?, data?, metadata? })` | Sends in-app feedback with device context. Resolves `{ status: 'sent', id? }`, `{ status: 'queued' }` or `{ status: 'rejected', reason }`. Never rejects. |

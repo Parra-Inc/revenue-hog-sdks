@@ -12,6 +12,8 @@ data class DeviceInfo(
     val osVersion: String? = null,
     val deviceModel: String? = null,
     val locale: String? = null,
+    /** versionName, sent with feedback. */
+    val appVersion: String? = null,
 )
 
 /** Builds the JSON bodies for the two SDK endpoints. Null fields are omitted. */
@@ -23,6 +25,8 @@ internal object Payloads {
     const val OPEN_PATH = "/api/sdk/v1/open"
     const val CHURN_SURVEY_PATH = "/api/sdk/v1/churn-survey"
     const val CHURN_RESPONSE_PATH = "/api/sdk/v1/churn-survey/response"
+    const val EVENTS_PATH = "/api/sdk/v1/events"
+    const val FEEDBACK_PATH = "/api/sdk/v1/feedback"
 
     fun paywall(
         appUserId: String,

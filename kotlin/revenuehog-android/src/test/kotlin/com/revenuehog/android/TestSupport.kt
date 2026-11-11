@@ -69,6 +69,8 @@ internal object TestSupport {
         transport: FakeTransport,
         store: KeyValueStore = MemoryStore(),
         now: () -> Long = { System.currentTimeMillis() },
+        eventFlushDelayMs: Long = -1,
+        scheduler: (Long, () -> Unit) -> Unit = { _, task -> task() },
     ): HogClient = HogClient(
         options = Options(baseUrl = "https://example.test", logLevel = LogLevel.SILENT),
         device = DeviceInfo(
@@ -77,6 +79,7 @@ internal object TestSupport {
             osVersion = "14",
             deviceModel = "Pixel 8",
             locale = "en_US",
+            appVersion = "2.1.0",
         ),
         store = store,
         transport = transport,
@@ -85,5 +88,7 @@ internal object TestSupport {
         sleep = { },
         logSink = { },
         now = now,
+        eventFlushDelayMs = eventFlushDelayMs,
+        scheduler = scheduler,
     )
 }

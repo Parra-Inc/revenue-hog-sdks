@@ -51,6 +51,10 @@ object RevenueHog {
                     osVersion = Build.VERSION.RELEASE,
                     deviceModel = Build.MODEL,
                     locale = Locale.getDefault().toString(),
+                    appVersion = runCatching {
+                        @Suppress("DEPRECATION")
+                        app.packageManager.getPackageInfo(app.packageName, 0).versionName
+                    }.getOrNull(),
                 ),
                 store = SharedPreferencesStore(prefs),
                 executor = Executors.newSingleThreadExecutor { runnable ->
@@ -99,10 +103,60 @@ object RevenueHog {
         withClient("reset") { it.reset() }
     }
 
-    /** Retries anything sitting in the offline queue. */
+    /** Sends buffered events and retries anything sitting in the offline queue. */
     @JvmStatic
     fun flush() {
         withClient("flush") { it.flush() }
+    }
+
+    /**
+     * Records a funnel milestone such as `onboarding_completed`. Names are
+     * snake_case, start with a letter, at most 48 characters, and may not
+     * start with `rh_` (invalid names are dropped with a warning).
+     * [properties] is a small flat map of strings, numbers and booleans (2 KB
+     * of JSON at most). Events are persisted and sent in batches of up to
+     * 50: when 20 are waiting, about 10 seconds after the first, on [flush],
+     * and on the next launch. The reserved name `onboarding_step` with
+     * `step` and `index` feeds the dashboard's onboarding funnel.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun track(name: String, properties: Map<String, Any?>? = null) {
+        withClient("track") { it.track(name, properties) }
+    }
+
+    /**
+     * Sends in-app feedback (bug, idea, question or praise) attributed to the
+     * current user, with device context added to `metadata`. [message] is
+     * required (max 5000 characters); [rating] is 1 to 5. [onResult] runs on
+     * the SDK's background thread with [FeedbackResult.Sent],
+     * [FeedbackResult.Queued] (offline; persisted and delivered later) or
+     * [FeedbackResult.Rejected].
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun sendFeedback(
+        kind: FeedbackKind,
+        message: String,
+        rating: Int? = null,
+        data: Map<String, Any?>? = null,
+        metadata: Map<String, Any?>? = null,
+        onResult: ((FeedbackResult) -> Unit)? = null,
+    ) {
+        val current = client
+        if (current == null) {
+            Log.d("RevenueHog", "sendFeedback called before configure")
+            try {
+                onResult?.invoke(FeedbackResult.Rejected("not configured"))
+            } catch (_: Throwable) {
+            }
+            return
+        }
+        try {
+            current.sendFeedback(kind, message, rating, data, metadata, onResult)
+        } catch (t: Throwable) {
+            Log.d("RevenueHog", "swallowed: ${t.message}")
+        }
     }
 
     /**

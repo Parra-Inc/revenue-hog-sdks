@@ -234,16 +234,86 @@ final class EventsFeedbackAdServicesTests: XCTestCase {
         XCTAssertTrue(requests(transport, "/api/sdk/v1/adservices").isEmpty)
     }
 
-    func testOfflineAdServicesIsQueued() async {
+    func testOfflineAdServicesIsQueuedAndFlagSetOnlyAfterDelivery() async {
+        let store = MemoryStore()
         let transport = MockTransport(script: [
             .status(200), // open
             .networkError, .networkError, .networkError,
         ])
         let client = TestSupport.makeClient(
-            transport: transport, queueDirectory: directory, adServicesToken: { "tok" }
+            transport: transport, store: store, queueDirectory: directory, adServicesToken: { "tok" }
         )
         await client.start()
         XCTAssertEqual(DiskQueue(directory: directory).load().map(\.path), ["/api/sdk/v1/adservices"])
+        XCTAssertNil(store.get("rh_adservices_sent"))
+
+        // A second launch while it is still queued does not enqueue a duplicate.
+        await client.sendAdServicesTokenIfNeeded()
+        XCTAssertEqual(DiskQueue(directory: directory).load().count, 1)
+
+        await client.flushAll()
+        XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
+        XCTAssertEqual(store.get("rh_adservices_sent"), "1")
+    }
+
+    func testAdServicesDroppedFromQueueIsCapturedAgain() async {
+        let store = MemoryStore()
+        let transport = MockTransport(script: [.networkError, .networkError, .networkError])
+        let client = TestSupport.makeClient(
+            transport: transport, store: store, queueDirectory: directory, adServicesToken: { "tok" }
+        )
+        await client.sendAdServicesTokenIfNeeded()
+        // The queue loses it (eviction, storage wipe): the flag was never set.
+        DiskQueue(directory: directory).clear()
+        XCTAssertNil(store.get("rh_adservices_sent"))
+
+        await client.sendAdServicesTokenIfNeeded()
+        XCTAssertEqual(store.get("rh_adservices_sent"), "1")
+        XCTAssertEqual(requests(transport, "/api/sdk/v1/adservices").count, 4)
+    }
+
+    func testAdServicesPermanentRejectionSetsFlag() async {
+        let store = MemoryStore()
+        let transport = MockTransport(script: [.status(400)])
+        let client = TestSupport.makeClient(
+            transport: transport, store: store, queueDirectory: directory, adServicesToken: { "tok" }
+        )
+        await client.sendAdServicesTokenIfNeeded()
+        XCTAssertEqual(store.get("rh_adservices_sent"), "1")
+        XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
+    }
+
+    // MARK: - reset keeps pending work
+
+    func testResetKeepsQueuedRequestsAndBufferedEventsUnderTheirOriginalUser() async {
+        let net = MockTransport.Response.networkError
+        let transport = MockTransport(script: [
+            .status(200), // identify
+            net, net, net, // feedback
+            net, net, net, // adservices
+        ])
+        let client = TestSupport.makeClient(
+            transport: transport, queueDirectory: directory, adServicesToken: { "tok" }
+        )
+        await client.identify(userId: "user_old")
+        _ = await client.sendFeedback(kind: .bug, message: "broken", rating: nil, data: nil, metadata: nil)
+        await client.sendAdServicesTokenIfNeeded()
+        await client.track("tap", properties: nil)
+
+        await client.reset()
+        XCTAssertEqual(
+            DiskQueue(directory: directory).load().map(\.path),
+            ["/api/sdk/v1/feedback", "/api/sdk/v1/adservices"]
+        )
+
+        await client.flushAll()
+        XCTAssertEqual(requests(transport, "/api/sdk/v1/feedback").last?.json["appUserId"] as? String, "user_old")
+        XCTAssertEqual(requests(transport, "/api/sdk/v1/adservices").count, 4)
+        let events = requests(transport, "/api/sdk/v1/events").first?.json["events"] as? [[String: Any]]
+        XCTAssertEqual(events?.first?["appUserId"] as? String, "user_old")
+        XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
+        let newId = await client.appUserId
+        XCTAssertTrue(newId.hasPrefix("$anon_"))
     }
 
     func testPropertyValueRoundTrips() throws {

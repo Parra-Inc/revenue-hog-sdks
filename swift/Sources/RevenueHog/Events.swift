@@ -277,6 +277,10 @@ extension HogClient {
     /// token (framework missing, transient error) simply tries next launch.
     func sendAdServicesTokenIfNeeded() async {
         guard !storage.adServicesSent else { return }
+        // Already waiting in the queue: flush() sets the flag when it lands.
+        // If the queue later evicts it, the flag stays unset and the next
+        // launch captures the token again.
+        guard !queue.load().contains(where: { $0.path == Self.adServicesPath }) else { return }
         guard let token = await adServicesToken(), !token.isEmpty else {
             log.debug("no AdServices token this launch")
             return
@@ -290,10 +294,19 @@ extension HogClient {
             appVersion: device.appVersion,
             storefront: await storefront()
         )
-        // Delivered or queued both count: the queue persists it.
-        storage.adServicesSent = true
-        await send("/api/sdk/v1/adservices", payload)
+        guard let body = try? Payloads.encoder.encode(payload) else { return }
+        // The flag is set only once the server answered (2xx, or a permanent
+        // rejection it will never accept). A queued send sets it on flush.
+        if await deliver(path: Self.adServicesPath, body: body, attempts: 3) {
+            storage.adServicesSent = true
+            await flush()
+        } else {
+            queue.append(PendingRequest(path: Self.adServicesPath, body: body))
+            log.info("queued \(Self.adServicesPath) for later delivery")
+        }
     }
+
+    static let adServicesPath = "/api/sdk/v1/adservices"
 
     /// 'production' | 'sandbox' | 'debug', from StoreKit's environment when
     /// resolved, else the build configuration.

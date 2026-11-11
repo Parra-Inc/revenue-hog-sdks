@@ -238,8 +238,9 @@ struct Storage: Sendable {
         }
     }
 
-    /// Set once the AdServices token for this install has been delivered or
-    /// queued, so it is captured at most once per install. Survives `reset()`:
+    /// Set once the server has answered the AdServices request for this
+    /// install (delivered, or permanently rejected), so it is sent at most
+    /// once per install. Survives `reset()`:
     /// the install, not the user, is what an ad campaign produced.
     var adServicesSent: Bool {
         get { store.get("rh_adservices_sent") == "1" }
@@ -251,7 +252,6 @@ struct Storage: Sendable {
     func resetIdentity() {
         store.set(nil, forKey: "rh_user_id")
         store.set(nil, forKey: "rh_sent_txns")
-        store.set(nil, forKey: "rh_event_buffer")
         store.set("$anon_" + UUID().uuidString.lowercased(), forKey: "rh_anonymous_id")
     }
 }

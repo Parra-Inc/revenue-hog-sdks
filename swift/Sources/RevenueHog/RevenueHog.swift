@@ -58,14 +58,66 @@ public enum RevenueHog {
 
     /// Manually links a purchase to the current user. Only needed when
     /// `enableAutoAttribution` is off or purchases happen outside StoreKit 2.
+    /// `jws` is the StoreKit 2 signed transaction
+    /// (`VerificationResult.jwsRepresentation`); pass it when you have it so
+    /// the link verifies server-side even without App Attest.
     public static func attributePurchase(
-        originalTransactionId: String, productId: String? = nil
+        originalTransactionId: String, productId: String? = nil, jws: String? = nil
     ) {
         withClient {
             await $0.attribute(
-                originalTransactionId: originalTransactionId, productId: productId
+                originalTransactionId: originalTransactionId, productId: productId, jws: jws
             )
         }
+    }
+
+    /// Records a funnel milestone ("signpost") such as `onboarding_completed`.
+    /// Names are snake_case, start with a letter, at most 48 characters, and
+    /// may not start with `rh_`; invalid names are dropped with a warning.
+    /// Properties are a small flat map (2 KB of JSON at most). Events are
+    /// buffered on disk and sent in batches of up to 50: when 20 are
+    /// waiting, about 10 seconds after the first one, on `flush()`, and on
+    /// the next launch. Offline batches wait in the persistent queue.
+    ///
+    /// The reserved name `onboarding_step` with `["step": "welcome",
+    /// "index": 0]` feeds the dashboard's onboarding funnel.
+    public static func track(_ name: String, properties: [String: PropertyValue]? = nil) {
+        withClient { await $0.track(name, properties: properties) }
+    }
+
+    /// Sends in-app feedback (a bug, idea, question or praise) attributed to
+    /// the current user, with device context added to `metadata`. Never
+    /// throws: returns `.sent`, `.queued` (offline; it is persisted and
+    /// delivered later) or `.rejected` (invalid input, see the reason).
+    /// `message` is required (max 5000 characters); `rating` is 1 to 5.
+    @discardableResult
+    public static func sendFeedback(
+        kind: FeedbackKind,
+        message: String,
+        rating: Int? = nil,
+        data: [String: PropertyValue]? = nil,
+        metadata: [String: PropertyValue]? = nil
+    ) async -> FeedbackResult {
+        let client = currentClient()
+        guard let client else {
+            Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
+            return .rejected(reason: "not configured")
+        }
+        return await client.sendFeedback(
+            kind: kind, message: message, rating: rating, data: data, metadata: metadata
+        )
+    }
+
+    /// Sends buffered events and retries everything in the offline queue now
+    /// (for example when connectivity returns or the app moves to the
+    /// background). Never throws.
+    public static func flush() async {
+        let client = currentClient()
+        guard let client else {
+            Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
+            return
+        }
+        await client.flushAll()
     }
 
     /// Forgets the current user (call on logout). A fresh anonymous id is
@@ -93,9 +145,7 @@ public enum RevenueHog {
         fallback: [String],
         forceVariant: String? = nil
     ) async -> Paywall {
-        lock.lock()
-        let client = self.client
-        lock.unlock()
+        let client = currentClient()
         guard let client else {
             Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
             return .fallback(entitlement: entitlement, productIds: fallback)
@@ -122,9 +172,7 @@ public enum RevenueHog {
     /// The answer (or the skip) is recorded automatically.
     @discardableResult
     public static func presentChurnSurvey(productId: String? = nil) async -> ChurnSurveyResult {
-        lock.lock()
-        let client = self.client
-        lock.unlock()
+        let client = currentClient()
         guard let client else {
             Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
             return .notShown
@@ -153,10 +201,16 @@ public enum RevenueHog {
         }
     }
 
-    private static func withClient(_ work: @escaping @Sendable (HogClient) async -> Void) {
+    /// Synchronous so it is callable from async contexts without holding
+    /// the lock across a suspension point.
+    private static func currentClient() -> HogClient? {
         lock.lock()
-        let client = self.client
-        lock.unlock()
+        defer { lock.unlock() }
+        return client
+    }
+
+    private static func withClient(_ work: @escaping @Sendable (HogClient) async -> Void) {
+        let client = currentClient()
         guard let client else {
             Logger(level: .warn).warn("not configured, call RevenueHog.configure() first")
             return

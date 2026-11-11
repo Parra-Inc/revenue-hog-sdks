@@ -218,11 +218,40 @@ struct Storage: Sendable {
         }
     }
 
+    /// Events recorded by `track` that have not been handed to the request
+    /// queue yet. Persisted so a crash or kill between `track` and the next
+    /// batch never loses them.
+    var eventBuffer: [BufferedEvent] {
+        get {
+            guard let raw = store.get("rh_event_buffer")?.data(using: .utf8),
+                  let events = try? JSONDecoder().decode([BufferedEvent].self, from: raw)
+            else { return [] }
+            return events
+        }
+        nonmutating set {
+            if newValue.isEmpty {
+                store.set(nil, forKey: "rh_event_buffer")
+                return
+            }
+            let data = try? JSONEncoder().encode(newValue)
+            store.set(data.flatMap { String(data: $0, encoding: .utf8) }, forKey: "rh_event_buffer")
+        }
+    }
+
+    /// Set once the AdServices token for this install has been delivered or
+    /// queued, so it is captured at most once per install. Survives `reset()`:
+    /// the install, not the user, is what an ad campaign produced.
+    var adServicesSent: Bool {
+        get { store.get("rh_adservices_sent") == "1" }
+        nonmutating set { store.set(newValue ? "1" : nil, forKey: "rh_adservices_sent") }
+    }
+
     /// Forgets who the user is. Enrollment credentials are device-scoped,
     /// not user-scoped, so they survive.
     func resetIdentity() {
         store.set(nil, forKey: "rh_user_id")
         store.set(nil, forKey: "rh_sent_txns")
+        store.set(nil, forKey: "rh_event_buffer")
         store.set("$anon_" + UUID().uuidString.lowercased(), forKey: "rh_anonymous_id")
     }
 }

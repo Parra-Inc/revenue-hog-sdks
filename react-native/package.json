@@ -1,6 +1,6 @@
 {
   "name": "@revenuehog/react-native",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Optional user-level attribution for RevenueHog. Pure JS — works in Expo Go. RevenueHog itself works without any SDK.",
   "license": "MIT",
   "author": "Parra, Inc.",

@@ -179,10 +179,65 @@ describe('sendAdServicesToken', () => {
     expect(transport.requests).toHaveLength(0);
   });
 
-  it('queues the token when offline', async () => {
+  it('queues the token offline and sets the flag only after delivery', async () => {
     const storage = memoryStorage();
-    const { client } = makeClient(mockFetch(['network-error', 'network-error', 'network-error']), {}, storage);
+    const transport = mockFetch(['network-error', 'network-error', 'network-error']);
+    const { client } = makeClient(transport, {}, storage);
     await client.sendAdServicesToken('tok');
     expect((await new PersistentQueue(storage).load()).map((p) => p.path)).toEqual(['/api/sdk/v1/adservices']);
+    expect(await storage.getItem('rh_adservices_sent')).toBeNull();
+
+    await client.sendAdServicesToken('tok'); // still queued: no duplicate
+    expect(await new PersistentQueue(storage).load()).toHaveLength(1);
+
+    await client.flush();
+    expect(await new PersistentQueue(storage).load()).toEqual([]);
+    expect(await storage.getItem('rh_adservices_sent')).toBe('1');
+  });
+
+  it('sends again when a queued token was dropped', async () => {
+    const storage = memoryStorage();
+    const transport = mockFetch(['network-error', 'network-error', 'network-error']);
+    const { client } = makeClient(transport, {}, storage);
+    await client.sendAdServicesToken('tok');
+    await new PersistentQueue(storage).clear();
+    await client.sendAdServicesToken('tok');
+    expect(await storage.getItem('rh_adservices_sent')).toBe('1');
+    expect(transport.requests.filter(at('/adservices'))).toHaveLength(4);
+  });
+
+  it('a permanent rejection sets the flag and is not queued', async () => {
+    const storage = memoryStorage();
+    const { client } = makeClient(mockFetch([400]), {}, storage);
+    await client.sendAdServicesToken('tok');
+    expect(await storage.getItem('rh_adservices_sent')).toBe('1');
+    expect(await new PersistentQueue(storage).load()).toEqual([]);
+  });
+});
+
+describe('reset keeps pending work', () => {
+  it('delivers queued feedback, AdServices and buffered events under the original user', async () => {
+    const storage = memoryStorage();
+    const net = 'network-error' as const;
+    const transport = mockFetch([200, net, net, net, net, net, net]);
+    const { client } = makeClient(transport, {}, storage);
+    await client.identify('user_old');
+    expect((await client.sendFeedback({ kind: 'bug', message: 'broken' })).status).toBe('queued');
+    await client.sendAdServicesToken('tok');
+    await client.track('tap');
+
+    await client.reset();
+    expect((await new PersistentQueue(storage).load()).map((p) => p.path)).toEqual([
+      '/api/sdk/v1/feedback',
+      '/api/sdk/v1/adservices',
+    ]);
+
+    await client.flush();
+    expect(transport.requests.filter(at('/feedback')).pop()?.body.appUserId).toBe('user_old');
+    const events = transport.requests.find(at('/events'))?.body.events as Record<string, unknown>[];
+    expect(events[0]?.appUserId).toBe('user_old');
+    expect(await new PersistentQueue(storage).load()).toEqual([]);
+    expect(await storage.getItem('rh_adservices_sent')).toBe('1');
+    expect(await storage.getItem('rh_anon_id')).toMatch(/^\$anon_/);
   });
 });

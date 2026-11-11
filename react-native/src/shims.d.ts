@@ -10,6 +10,8 @@ declare const console: { log(...args: unknown[]): void };
 
 declare function setTimeout(callback: () => void, ms: number): unknown;
 
+declare function clearTimeout(handle: unknown): void;
+
 // Hermes ships crypto.randomUUID on modern RN; guarded at runtime anyway.
 declare const crypto: { randomUUID(): string } | undefined;
 

@@ -3,7 +3,13 @@ import { Logger } from './logger';
 import { tryHookReactNativeIap, tryReadAndroidRenewals } from './autoAttribution';
 import { builtInChurnSurveyPresenter, isChurnSurveyHostMounted } from './ChurnSurveySheet';
 import type {
+  AdServicesTokenOptions,
   AttributePurchaseInput,
+  EventProperties,
+  FeedbackInput,
+  FeedbackKind,
+  FeedbackResult,
+  PropertyValue,
   ChurnSurvey,
   ChurnSurveyOption,
   ChurnSurveyPresenter,
@@ -176,9 +182,53 @@ export const RevenueHog = {
     return withClient('reset', (c) => c.reset());
   },
 
-  /** Retry anything sitting in the offline queue (e.g. on connectivity regained). */
+  /**
+   * Send buffered events and retry anything sitting in the offline queue
+   * (e.g. on connectivity regained or when the app backgrounds).
+   */
   flush(): Promise<void> {
     return withClient('flush', (c) => c.flush());
+  },
+
+  /**
+   * Record a funnel milestone such as `onboarding_completed`. Names are
+   * snake_case, start with a letter, at most 48 characters, and may not
+   * start with `rh_` (invalid names are dropped with a warning). Properties
+   * are a small flat map (2 KB of JSON at most). Events are persisted and
+   * sent in batches of up to 50: when 20 are waiting, about 10 seconds after
+   * the first, on `flush()`, and on the next launch. The reserved name
+   * `onboarding_step` with `{ step, index }` feeds the onboarding funnel.
+   */
+  track(name: string, properties?: EventProperties): Promise<void> {
+    return withClient('track', (c) => c.track(name, properties));
+  },
+
+  /**
+   * Send in-app feedback (bug, idea, question or praise) attributed to the
+   * current user, with device context added to `metadata`. Never rejects:
+   * resolves `{ status: 'sent', id? }`, `{ status: 'queued' }` (offline; it
+   * is persisted and delivered later) or `{ status: 'rejected', reason }`.
+   */
+  sendFeedback(input: FeedbackInput): Promise<FeedbackResult> {
+    if (!client) {
+      new Logger('warn').warn('sendFeedback called before configure');
+      return Promise.resolve({ status: 'rejected', reason: 'not configured' });
+    }
+    return client
+      .sendFeedback(input)
+      .catch((): FeedbackResult => ({ status: 'rejected', reason: 'internal error' }));
+  },
+
+  /**
+   * iOS only: store the Apple Ads attribution token from
+   * `AAAttribution.attributionToken()` so RevenueHog can resolve which Apple
+   * Ads campaign produced this install. This SDK is pure JS and cannot read
+   * the token itself; get it from a small native module (see the README)
+   * and pass it here once at launch. Sent once per install; later calls are
+   * no-ops. Ignored on Android.
+   */
+  sendAdServicesToken(token: string, options?: AdServicesTokenOptions): Promise<void> {
+    return withClient('sendAdServicesToken', (c) => c.sendAdServicesToken(token, options));
   },
 
   /**
@@ -232,8 +282,15 @@ export {
 export type { ChurnSurveyHostProps, ChurnSurveySheetProps } from './ChurnSurveySheet';
 export { churnSurveyLabels } from './churnSurveyLabels';
 export type { ChurnSurveyLabels } from './churnSurveyLabels';
+export { validEventName } from './client';
 export type {
+  AdServicesTokenOptions,
   AttributePurchaseInput,
+  EventProperties,
+  FeedbackInput,
+  FeedbackKind,
+  FeedbackResult,
+  PropertyValue,
   ChurnSurvey,
   ChurnSurveyOption,
   ChurnSurveyPresenter,

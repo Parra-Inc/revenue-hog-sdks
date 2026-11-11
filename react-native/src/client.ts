@@ -12,7 +12,11 @@ import {
   type ParsedSurvey,
 } from './churnSurvey';
 import type {
+  AdServicesTokenOptions,
   AttributePayload,
+  EventProperties,
+  FeedbackInput,
+  FeedbackResult,
   ChurnSurvey,
   ChurnSurveyResult,
   AttributePurchaseInput,
@@ -34,6 +38,18 @@ const IMPRESSION_PATH = '/api/sdk/v1/paywall/impression';
 const OPEN_PATH = '/api/sdk/v1/open';
 const CHURN_SURVEY_PATH = '/api/sdk/v1/churn-survey';
 const CHURN_RESPONSE_PATH = '/api/sdk/v1/churn-survey/response';
+const EVENTS_PATH = '/api/sdk/v1/events';
+const FEEDBACK_PATH = '/api/sdk/v1/feedback';
+const ADSERVICES_PATH = '/api/sdk/v1/adservices';
+const EVENT_BUFFER_KEY = 'rh_event_buffer';
+const ADSERVICES_SENT_KEY = 'rh_adservices_sent';
+const MAX_BATCH = 50;
+const BATCH_THRESHOLD = 20;
+const MAX_BUFFERED = 1000;
+const MAX_PROPERTIES_JSON = 2048;
+const MAX_FEEDBACK_MESSAGE = 5000;
+const MAX_FEEDBACK_JSON = 8192;
+const EVENT_NAME_RE = /^[a-z][a-z0-9_]*$/;
 const MAX_ATTEMPTS = 3;
 const PAYWALL_CACHE_KEY = 'rh_paywall_cache';
 
@@ -45,7 +61,38 @@ export interface ClientSeams {
   paywallTimeoutMs?: number;
   /** Wall clock in ms. Tests inject a fixed one. */
   now?: () => number;
+  /** How long a tracked event may wait before its batch goes out. Negative disables the timer. */
+  eventFlushDelayMs?: number;
 }
+
+/** One `track` call, persisted until it goes out in a batch. */
+interface BufferedEvent {
+  name: string;
+  properties?: EventProperties;
+  /** epoch ms */
+  at: number;
+  appUserId: string;
+}
+
+/** snake_case, starts with a letter, max 48 chars, `rh_` reserved. */
+export function validEventName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim();
+  if (!name || name.length > 48 || name.startsWith('rh_') || !EVENT_NAME_RE.test(name)) return null;
+  return name;
+}
+
+function byteLength(value: unknown): number {
+  try {
+    const json = JSON.stringify(value);
+    // UTF-8 byte count without TextEncoder (not guaranteed on every RN runtime).
+    return encodeURIComponent(json).replace(/%[0-9A-F]{2}/g, 'x').length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+declare const __DEV__: boolean | undefined;
 
 /** One cached paywall answer, persisted per entitlement. */
 interface CachedPaywall {
@@ -78,6 +125,8 @@ export class HogClient {
   private readonly paywallTimeoutMs: number;
   private readonly storeEnvironment?: string;
   private readonly now: () => number;
+  private readonly eventFlushDelayMs: number;
+  private eventTimer: ReturnType<typeof setTimeout> | undefined;
   /** serializes all operations so identify/attribute keep their order */
   private ops: Promise<void> = Promise.resolve();
 
@@ -93,6 +142,7 @@ export class HogClient {
     this.paywallTimeoutMs = seams.paywallTimeoutMs ?? 2500;
     this.storeEnvironment = config.storeEnvironment;
     this.now = seams.now ?? (() => Date.now());
+    this.eventFlushDelayMs = seams.eventFlushDelayMs ?? 10_000;
     if (!this.device.bundleId) {
       this.log.warn(
         'bundleId not detected — pass { bundleId } to configure() ' +
@@ -150,6 +200,8 @@ export class HogClient {
       await this.storage.removeItem('rh_user_id');
       await this.storage.removeItem('rh_sent_txns');
       await this.storage.removeItem(PAYWALL_CACHE_KEY);
+      await this.storage.removeItem(EVENT_BUFFER_KEY);
+      this.clearEventTimer();
       // rh_install_id survives on purpose: it keys experiment assignment
       // to the DEVICE, not to a user.
       await this.storage.setItem('rh_anon_id', freshAnonId());
@@ -158,8 +210,91 @@ export class HogClient {
     });
   }
 
+  /** Sends buffered events, then replays the offline queue. */
   flush(): Promise<void> {
-    return this.run(() => this.flushQueue());
+    return this.run(async () => {
+      await this.flushEvents();
+      await this.flushQueue();
+    });
+  }
+
+  /**
+   * Buffers a signpost event. Batches (max 50) go out when 20 are waiting,
+   * after `eventFlushDelayMs`, on `flush()` and on the next launch.
+   */
+  track(name: string, properties?: EventProperties): Promise<void> {
+    return this.run(async () => {
+      const valid = validEventName(name);
+      if (!valid) {
+        this.log.warn(
+          `track: invalid event name "${String(name)}" (snake_case, max 48 chars, no rh_ prefix), dropped`
+        );
+        return;
+      }
+      let props: EventProperties | undefined =
+        properties && typeof properties === 'object' && !Array.isArray(properties)
+          ? properties
+          : undefined;
+      if (props && byteLength(props) > MAX_PROPERTIES_JSON) {
+        this.log.warn(`track(${valid}): properties over ${MAX_PROPERTIES_JSON} bytes, sent without them`);
+        props = undefined;
+      }
+      if (props && Object.keys(props).length === 0) props = undefined;
+      const buffer = await this.eventBuffer();
+      buffer.push({
+        name: valid,
+        ...(props ? { properties: props } : {}),
+        at: this.now(),
+        appUserId: await this.appUserId(),
+      });
+      await this.saveEventBuffer(buffer.slice(-MAX_BUFFERED));
+      if (buffer.length >= BATCH_THRESHOLD) await this.flushEvents();
+      else this.scheduleEventFlush();
+    });
+  }
+
+  /**
+   * Sends in-app feedback attributed to the current user, with device
+   * context merged into `metadata`. Never rejects.
+   */
+  sendFeedback(input: FeedbackInput): Promise<FeedbackResult> {
+    let result: FeedbackResult = { status: 'rejected', reason: 'internal error' };
+    return this.run(async () => {
+      result = await this.sendFeedbackNow(input);
+    }).then(() => result);
+  }
+
+  /**
+   * Stores the Apple Ads AdServices token for this install. Sent once per
+   * install; later calls are no-ops. iOS only.
+   */
+  sendAdServicesToken(token: string, options: AdServicesTokenOptions = {}): Promise<void> {
+    return this.run(async () => {
+      const trimmed = typeof token === 'string' ? token.trim() : '';
+      if (!trimmed) {
+        this.log.warn('sendAdServicesToken called with an empty token, ignored');
+        return;
+      }
+      if (this.device.platform !== 'ios') {
+        this.log.warn('sendAdServicesToken is iOS only (Apple Ads), ignored');
+        return;
+      }
+      if ((await this.storage.getItem(ADSERVICES_SENT_KEY)) === '1') {
+        this.log.debug('AdServices token already sent for this install, skipped');
+        return;
+      }
+      const appVersion = options.appVersion ?? this.device.appVersion;
+      await this.storage.setItem(ADSERVICES_SENT_KEY, '1');
+      await this.send(ADSERVICES_PATH, {
+        bundleId: this.device.bundleId ?? 'unknown',
+        platform: this.device.platform,
+        installId: await this.installId(),
+        token: trimmed,
+        environment: options.environment ?? this.adServicesEnvironment(),
+        ...(appVersion ? { appVersion } : {}),
+        ...(options.storefront ? { storefront: options.storefront } : {}),
+      });
+    });
   }
 
   /**
@@ -326,6 +461,124 @@ export class HogClient {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  private adServicesEnvironment(): 'production' | 'sandbox' | 'debug' {
+    if (this.storeEnvironment === 'Sandbox') return 'sandbox';
+    if (this.storeEnvironment === 'Xcode') return 'debug';
+    if (this.storeEnvironment === 'Production') return 'production';
+    return typeof __DEV__ !== 'undefined' && __DEV__ ? 'debug' : 'production';
+  }
+
+  private async sendFeedbackNow(input: FeedbackInput): Promise<FeedbackResult> {
+    const reject = (reason: string): FeedbackResult => {
+      this.log.warn(`sendFeedback: ${reason}`);
+      return { status: 'rejected', reason };
+    };
+    const kinds = ['bug', 'idea', 'question', 'praise'];
+    if (!input || !kinds.includes(input.kind)) return reject('invalid kind');
+    const message = typeof input.message === 'string' ? input.message.trim() : '';
+    if (!message) return reject('message is required');
+    if (message.length > MAX_FEEDBACK_MESSAGE) {
+      return reject(`message is too long (max ${MAX_FEEDBACK_MESSAGE})`);
+    }
+    if (
+      input.rating != null &&
+      (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)
+    ) {
+      return reject('rating must be an integer from 1 to 5');
+    }
+    const metadata: Record<string, unknown> = {
+      ...(this.device.osVersion ? { osVersion: this.device.osVersion } : {}),
+      ...(this.device.deviceModel ? { deviceModel: this.device.deviceModel } : {}),
+      ...(this.device.locale ? { locale: this.device.locale } : {}),
+      ...(this.device.appVersion ? { appVersion: this.device.appVersion } : {}),
+      ...(input.metadata ?? {}),
+    };
+    if (input.data != null && byteLength(input.data) > MAX_FEEDBACK_JSON) {
+      return reject(`data is too large (max ${MAX_FEEDBACK_JSON} bytes)`);
+    }
+    if (byteLength(metadata) > MAX_FEEDBACK_JSON) {
+      return reject(`metadata is too large (max ${MAX_FEEDBACK_JSON} bytes)`);
+    }
+    const body = JSON.stringify({
+      bundleId: this.device.bundleId ?? 'unknown',
+      platform: this.device.platform,
+      appUserId: await this.appUserId(),
+      kind: input.kind,
+      message,
+      ...(input.rating != null ? { rating: input.rating } : {}),
+      ...(input.data != null ? { data: input.data } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    });
+    const res = await this.deliverResponse(FEEDBACK_PATH, body, MAX_ATTEMPTS);
+    if (!res) {
+      await this.queue.append({ path: FEEDBACK_PATH, body });
+      this.log.info(`queued ${FEEDBACK_PATH} for later delivery`);
+      return { status: 'queued' };
+    }
+    if (res.status < 200 || res.status >= 300) return { status: 'rejected', reason: `HTTP ${res.status}` };
+    await this.flushQueue();
+    let id: string | undefined;
+    try {
+      const parsed = typeof res.text === 'function' ? (JSON.parse(await res.text()) as unknown) : null;
+      const raw = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).id : undefined;
+      if (typeof raw === 'string') id = raw;
+    } catch {
+      // body is optional
+    }
+    return id ? { status: 'sent', id } : { status: 'sent' };
+  }
+
+  private async eventBuffer(): Promise<BufferedEvent[]> {
+    try {
+      const parsed = JSON.parse((await this.storage.getItem(EVENT_BUFFER_KEY)) ?? '[]') as unknown;
+      return Array.isArray(parsed) ? (parsed as BufferedEvent[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async saveEventBuffer(events: BufferedEvent[]): Promise<void> {
+    if (events.length === 0) await this.storage.removeItem(EVENT_BUFFER_KEY);
+    else await this.storage.setItem(EVENT_BUFFER_KEY, JSON.stringify(events));
+  }
+
+  /** Moves the buffer out in batches of at most 50; undeliverable batches are queued. */
+  private async flushEvents(): Promise<void> {
+    this.clearEventTimer();
+    for (;;) {
+      const buffer = await this.eventBuffer();
+      if (buffer.length === 0) return;
+      const batch = buffer.slice(0, MAX_BATCH);
+      await this.saveEventBuffer(buffer.slice(batch.length));
+      const body = JSON.stringify({
+        bundleId: this.device.bundleId ?? 'unknown',
+        platform: this.device.platform,
+        events: batch,
+      });
+      if (!(await this.deliver(EVENTS_PATH, body, MAX_ATTEMPTS))) {
+        await this.queue.append({ path: EVENTS_PATH, body });
+        this.log.info(`queued ${EVENTS_PATH} for later delivery`);
+      }
+    }
+  }
+
+  private scheduleEventFlush(): void {
+    if (this.eventTimer !== undefined || this.eventFlushDelayMs < 0) return;
+    try {
+      this.eventTimer = setTimeout(() => {
+        this.eventTimer = undefined;
+        void this.run(() => this.flushEvents());
+      }, this.eventFlushDelayMs);
+    } catch {
+      this.eventTimer = undefined;
+    }
+  }
+
+  private clearEventTimer(): void {
+    if (this.eventTimer !== undefined) clearTimeout(this.eventTimer);
+    this.eventTimer = undefined;
+  }
 
   private async paywallNow(
     entitlement: string,
@@ -588,6 +841,18 @@ export class HogClient {
    * will never accept is dropped, not retried forever).
    */
   private async deliver(path: string, body: string, attempts: number): Promise<boolean> {
+    return (await this.deliverResponse(path, body, attempts)) !== null;
+  }
+
+  /**
+   * The final response when delivered (2xx) or permanently rejected; null
+   * when the request should be queued (network error, 429, 5xx).
+   */
+  private async deliverResponse(
+    path: string,
+    body: string,
+    attempts: number
+  ): Promise<{ status: number; text?: () => Promise<string> } | null> {
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         const res = await this.fetchFn(`${this.baseUrl}${path}`, {
@@ -595,12 +860,12 @@ export class HogClient {
           headers: { 'Content-Type': 'application/json' },
           body,
         });
-        if (res.status >= 200 && res.status < 300) return true;
+        if (res.status >= 200 && res.status < 300) return res;
         if (res.status === 429 || res.status >= 500) {
           this.log.warn(`${res.status} from ${path} — backing off`);
         } else {
-          this.log.error(`${res.status} from ${path} — dropped`);
-          return true;
+          this.log.error(`${res.status} from ${path}, dropped`);
+          return res;
         }
       } catch (e) {
         this.log.debug(
@@ -609,7 +874,7 @@ export class HogClient {
       }
       if (attempt < attempts - 1) await sleep(this.backoffMs(attempt));
     }
-    return false;
+    return null;
   }
 }
 

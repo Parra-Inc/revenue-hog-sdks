@@ -178,3 +178,39 @@ export type FetchLike = (
   // `text` is optional so old mocks stay valid; the real fetch Response
   // satisfies it structurally. Only the paywall path reads a body.
 ) => Promise<{ status: number; text?: () => Promise<string> }>;
+
+/** A flat JSON value for event properties and feedback data/metadata. */
+export type PropertyValue = string | number | boolean | null;
+
+export type EventProperties = Record<string, PropertyValue>;
+
+export type FeedbackKind = 'bug' | 'idea' | 'question' | 'praise';
+
+export interface FeedbackInput {
+  kind: FeedbackKind;
+  /** Required, at most 5000 characters (trimmed). */
+  message: string;
+  /** Optional integer 1 to 5. */
+  rating?: number;
+  /** Optional small structured payload (max 8 KB of JSON), e.g. a repro blob. */
+  data?: Record<string, unknown>;
+  /** Optional extra context (max 8 KB of JSON). Device context is added for you. */
+  metadata?: Record<string, unknown>;
+}
+
+/** Outcome of `sendFeedback`. The promise never rejects. */
+export type FeedbackResult =
+  | { status: 'sent'; id?: string }
+  /** Offline or rate limited: persisted and delivered on a later flush or launch. */
+  | { status: 'queued' }
+  /** Invalid input, or a request the server will never accept. Not retried. */
+  | { status: 'rejected'; reason: string };
+
+export interface AdServicesTokenOptions {
+  /** Defaults from `storeEnvironment` in configure(), else `__DEV__` ? 'debug' : 'production'. */
+  environment?: 'production' | 'sandbox' | 'debug';
+  /** App Store storefront country code, e.g. 'USA'. */
+  storefront?: string;
+  /** Defaults to the detected app version. */
+  appVersion?: string;
+}

@@ -14,8 +14,21 @@ import { churnSurveyLabels, type ChurnSurveyLabels } from './churnSurveyLabels';
 import { OTHER_KEY } from './churnSurvey';
 import type { ChurnSurvey, ChurnSurveyPresenter, ChurnSurveyResult } from './types';
 
+/**
+ * What the components return: structurally a React element
+ * (`ReactElement<any, any>`), declared here so JSX accepts
+ * `<ChurnSurveyHost />` without this package depending on `@types/react`.
+ */
+export interface ChurnSurveyElement {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  props: any;
+  key: string | null;
+}
+type Element = ChurnSurveyElement;
+
 // Minimal shapes of the React and React Native APIs used here.
-type Element = unknown;
 type CreateElement = (type: unknown, props?: Record<string, unknown> | null, ...children: unknown[]) => Element;
 interface ReactLike {
   createElement: CreateElement;

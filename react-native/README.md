@@ -60,21 +60,25 @@ React Native purchases usually flow through `react-native-iap` or
 
 **Automatic**: if `react-native-iap` is installed and `autoAttribution` is
 on (the default), the SDK lazily hooks `purchaseUpdatedListener` and
-attributes every purchase, including the StoreKit 2 signed transaction
-(`jwsRepresentationIos`) when the installed version exposes it. Nothing to do.
+attributes every purchase, including the StoreKit 2 signed transaction when
+the installed version exposes it: `jwsRepresentationIos` on react-native-iap
+13, the unified `purchaseToken` on iOS with react-native-iap 14 and 15.
+Android purchases are linked by their Play purchase token. Nothing to do.
 
 **Manual**: call `attributePurchase` from your own purchase listener:
 
 ```ts
-// react-native-iap
+// react-native-iap 14/15 (iOS)
 import { purchaseUpdatedListener } from 'react-native-iap';
 
 purchaseUpdatedListener((purchase) => {
   RevenueHog.attributePurchase({
     originalTransactionId:
-      purchase.originalTransactionIdentifierIOS ?? purchase.transactionId!,
+      purchase.originalTransactionIdentifierIOS ?? purchase.transactionId ?? purchase.id,
     productId: purchase.productId,
-    jws: purchase.jwsRepresentationIos, // iOS: Apple-signed transaction
+    // iOS: the Apple-signed transaction. react-native-iap 13 calls it
+    // jwsRepresentationIos; 14+ puts it in purchaseToken.
+    jws: purchase.purchaseToken ?? undefined,
   });
   // …your finishTransaction logic
 });
@@ -90,6 +94,25 @@ setPurchaseListener(({ results }) => {
 });
 ```
 
+### StoreKit `appAccountToken`
+
+Pass the install id as StoreKit's `appAccountToken` so App Store server
+notifications for the purchase carry it. It is an uppercase UUID string,
+which StoreKit accepts (it must be a UUID):
+
+```ts
+import { requestPurchase } from 'react-native-iap';
+
+const appAccountToken = await RevenueHog.getInstallId();
+await requestPurchase({
+  request: { ios: { sku, appAccountToken } },
+  type: 'subs',
+});
+```
+
+The id survives logout and `reset()`; on React Native it lives in your
+storage adapter, so it changes on reinstall.
+
 ## API reference
 
 | Call | What it does |
@@ -100,6 +123,7 @@ setPurchaseListener(({ results }) => {
 | `RevenueHog.attributePurchase({ originalTransactionId, productId?, jws? })` | Links a purchase to the current user. `jws` is the StoreKit 2 signed transaction (iOS); when present the server verifies it against Apple's signature and it is sent in the `jws` field of `POST /api/sdk/v1/attribute`. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Queued requests and unsent events keep the user they were recorded under and still deliver. |
 | `RevenueHog.flush()` | Sends buffered events and retries the offline queue (e.g. on connectivity regained). |
+| `RevenueHog.getInstallId()` | Resolves this install's id, an uppercase UUID string, for StoreKit's `appAccountToken`. Rejects before `configure()`. |
 | `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat properties). Persisted, sent in batches of up to 50. |
 | `RevenueHog.sendFeedback({ kind, message, rating?, data?, metadata? })` | Sends in-app feedback with device context. Resolves `{ status: 'sent', id? }`, `{ status: 'queued' }` or `{ status: 'rejected', reason }`. Never rejects. |
 | `RevenueHog.sendAdServicesToken(token, { environment?, storefront?, appVersion? }?)` | iOS only: stores the Apple Ads attribution token, once per install (see below). |

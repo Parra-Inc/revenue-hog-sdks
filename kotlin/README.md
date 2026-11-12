@@ -94,6 +94,7 @@ your delegate untouched.
 | `RevenueHog.billingListener(delegate?)` | Reflection-based `PurchasesUpdatedListener` wrapper (see above). |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Queued requests and unsent events keep the user they were recorded under and still deliver. |
 | `RevenueHog.flush()` | Sends buffered events and retries the offline queue. |
+| `RevenueHog.installId` | This install's id, an uppercase UUID string, unchanged by `reset()`. `null` before `configure()`. |
 | `RevenueHog.track(name, properties?)` | Records a funnel milestone (snake_case name, flat map of strings, numbers, booleans). Persisted, sent in batches of up to 50. |
 | `RevenueHog.sendFeedback(kind, message, rating?, data?, metadata?, onResult?)` | Sends in-app feedback (`FeedbackKind.BUG`, `IDEA`, `QUESTION`, `PRAISE`) with device context. `onResult` (SDK thread) gets `FeedbackResult.Sent(id)`, `Queued` or `Rejected(reason)`. |
 | `RevenueHog.presentChurnSurvey(activity, productId?, onResult?)` | Shows the churn survey dialog now and records the answer. |
@@ -108,6 +109,14 @@ RevenueHog.configure(this, Options(
     logLevel = LogLevel.DEBUG,                // default WARN
 ))
 ```
+
+### Install id
+
+`RevenueHog.installId` is the same per-install UUID the iOS SDK hands to
+StoreKit as `appAccountToken`. Play Billing has no `appAccountToken`; if you
+want a per-install key on Play purchases, pass it to
+`BillingFlowParams.Builder.setObfuscatedAccountId(...)` (64 characters max,
+which a UUID fits).
 
 ## Events and feedback
 

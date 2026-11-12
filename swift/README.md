@@ -21,7 +21,7 @@ https://github.com/Parra-Inc/revenue-hog-sdks
 Select the `RevenueHog` product. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.5.2")
+.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.5.3")
 ```
 
 Then add the **App Attest capability** to your app target
@@ -95,6 +95,8 @@ Apple's sandbox automatically, so `production` is always the right value.
 | `await RevenueHog.sendFeedback(kind:message:rating:data:metadata:)` | Sends in-app feedback (`.bug`, `.idea`, `.question`, `.praise`) with device context. Returns `.sent(id:)`, `.queued` (offline, delivered later) or `.rejected(reason:)`. Never throws. |
 | `await RevenueHog.flush()` | Sends buffered events and retries the offline queue now. |
 | `RevenueHog.reset()` | Forgets the user on logout; issues a fresh anonymous id. Device enrollment survives. Queued requests and unsent events keep the user they were recorded under and still deliver. |
+| `await RevenueHog.installId` | This install's id (`UUID().uuidString`, uppercase), kept in the Keychain and unchanged by `reset()`. `nil` before `configure()`. |
+| `await RevenueHog.appAccountToken` | The same id as a `UUID`, for StoreKit's `appAccountToken` purchase option. |
 | `RevenueHog.presentChurnSurvey(productId:)` | Shows the churn survey sheet now and records the answer. Returns `.option(key, additionalInfo:)`, `.other(text, additionalInfo:)`, `.skipped` or `.notShown`. `additionalInfo` is the optional "Tell us more" text, set only when the survey's Allow additional info setting is on. |
 
 ### Options
@@ -107,6 +109,19 @@ RevenueHog.configure(options: Options(
     enableChurnSurveyAutoTrigger: true,                     // default
     enableAdServicesAttribution: true                       // default
 ))
+```
+
+### StoreKit `appAccountToken`
+
+Pass the install id with the purchase so App Store server notifications
+carry it:
+
+```swift
+var options: Set<Product.PurchaseOption> = []
+if let token = await RevenueHog.appAccountToken {
+    options.insert(.appAccountToken(token))
+}
+let result = try await product.purchase(options: options)
 ```
 
 ## Events, feedback and Apple Ads

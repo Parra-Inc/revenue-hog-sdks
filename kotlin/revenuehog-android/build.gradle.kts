@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.revenuehog"
-version = "0.5.2"
+version = "0.5.3"
 
 android {
     namespace = "com.revenuehog.android"

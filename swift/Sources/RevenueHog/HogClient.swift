@@ -109,6 +109,9 @@ actor HogClient {
     /// or the persisted anonymous id before login.
     var appUserId: String { storage.userId ?? storage.anonymousId }
 
+    /// The persisted install id (see `Storage.installId`).
+    var installId: String { storage.installId }
+
     // MARK: - Operations
 
     /// Called once from `configure()`: kicks off App Attest enrollment,

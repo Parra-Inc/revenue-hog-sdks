@@ -520,7 +520,8 @@ internal class HogClient(
      * sticks to this device. SharedPreferences survives logout but not
      * reinstall — the documented degraded stickiness vs the iOS Keychain.
      */
-    private fun installId(): String {
+    @Synchronized
+    internal fun installId(): String {
         store.get(KEY_INSTALL_ID)?.let { return it }
         val fresh = UUID.randomUUID().toString().uppercase()
         store.put(KEY_INSTALL_ID, fresh)

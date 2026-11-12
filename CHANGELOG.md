@@ -3,7 +3,28 @@
 All three SDKs (Swift package tag, `com.revenuehog:revenuehog-android`,
 `@revenuehog/react-native`) share one version number.
 
-## 0.5.2 (unreleased)
+## 0.5.3 (unreleased)
+
+### Fixed
+- React Native: automatic attribution now works with react-native-iap 14
+  and 15. On iOS those versions carry the StoreKit 2 signed transaction in
+  the unified `purchaseToken`, which the SDK now sends as `jws` (when it looks
+  like a JWS) and no longer mistakes for the transaction id. The purchase's
+  `platform`, platform-suffixed fields, then `Platform.OS` decide iOS versus
+  Android; `jwsRepresentationIos` still wins on react-native-iap 13, and the
+  unified `id` is a transaction id fallback. Android renewal state also reads
+  the unified `isAutoRenewing` on purchases marked Android.
+- React Native: `ChurnSurveyHost` and `ChurnSurveySheet` are typed to return
+  a React element shape instead of `unknown`, so `<ChurnSurveyHost />`
+  typechecks in an app without a cast (TS2786). React stays an optional peer.
+
+### Added
+- The install id is public, for StoreKit's `appAccountToken`:
+  React Native `RevenueHog.getInstallId()`, Swift `await RevenueHog.installId`
+  and `await RevenueHog.appAccountToken` (a `UUID`), Kotlin
+  `RevenueHog.installId`. It is an uppercase UUID string on every platform.
+
+## 0.5.2 (2026-11-12)
 
 ### Fixed
 - Swift: automatic AdServices capture no longer re-sends the token for

@@ -57,6 +57,18 @@ class PaywallTest {
     }
 
     @Test
+    fun `installId is a stable uppercase UUID matching the paywall request`() {
+        val transport = FakeTransport().apply { bodies.add(experimentJson) }
+        val client = TestSupport.makeClient(transport)
+        val id = client.installId()
+        assertEquals(id, java.util.UUID.fromString(id).toString().uppercase())
+        fetch(client, "pro", emptyList())
+        client.reset()
+        assertEquals(id, client.installId())
+        assertEquals(id, paywallRequests(transport).first().json.optString("installId"))
+    }
+
+    @Test
     fun `persists the installId across clients and reset`() {
         val store = MemoryStore()
         val transport = FakeTransport().apply {

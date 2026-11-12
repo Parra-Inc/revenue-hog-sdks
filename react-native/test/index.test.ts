@@ -11,6 +11,25 @@ describe('RevenueHog singleton', () => {
       RevenueHog.attributePurchase({ originalTransactionId: 't' })
     ).resolves.toBeUndefined();
     await expect(RevenueHog.reset()).resolves.toBeUndefined();
+    await expect(RevenueHog.getInstallId()).rejects.toThrow(/configure/);
+  });
+
+  it('getInstallId returns a stable uppercase UUID usable as appAccountToken', async () => {
+    const storage = memoryStorage();
+    RevenueHog.configure({
+      baseUrl: 'https://example.test',
+      bundleId: 'com.example.app',
+      storage,
+      logLevel: 'silent',
+      fetch: async () => ({ status: 200 }),
+      autoAttribution: false,
+    });
+    const id = await RevenueHog.getInstallId();
+    expect(id).toMatch(/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/);
+    expect(await RevenueHog.getInstallId()).toBe(id);
+    await RevenueHog.reset();
+    expect(await RevenueHog.getInstallId()).toBe(id);
+    expect(await storage.getItem('rh_install_id')).toBe(id);
   });
 
   it('configure wires the client; identify hits the API', async () => {

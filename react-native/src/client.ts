@@ -708,7 +708,7 @@ export class HogClient {
    * to this device. AsyncStorage survives logout but not reinstall — the
    * documented degraded stickiness vs the iOS Keychain.
    */
-  private async installId(): Promise<string> {
+  async installId(): Promise<string> {
     const existing = await this.storage.getItem('rh_install_id');
     if (existing) return existing;
     const fresh = freshAnonId().slice('$anon_'.length).toUpperCase();

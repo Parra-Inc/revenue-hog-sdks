@@ -43,3 +43,59 @@ describe('transactionIdFromPurchase', () => {
     expect(transactionIdFromPurchase(undefined)).toBeUndefined();
   });
 });
+
+describe('react-native-iap 14/15 purchase shapes', () => {
+  // v15 iOS: unified id + platform, JWS in purchaseToken, null for absent fields.
+  const v15Ios = {
+    id: '2000000999',
+    transactionId: '2000000999',
+    originalTransactionIdentifierIOS: '2000000001',
+    productId: 'pro.monthly',
+    platform: 'ios',
+    purchaseToken: JWS,
+    jwsRepresentationIos: null,
+  };
+  // v15 Android: unified id is the order id, purchaseToken is the Play token.
+  const v15Android = {
+    id: 'GPA.1234-5678',
+    transactionId: 'GPA.1234-5678',
+    productId: 'pro.monthly',
+    platform: 'android',
+    purchaseToken: 'opaque.AO-J1Oxyz',
+    autoRenewingAndroid: true,
+    originalTransactionIdentifierIOS: null,
+  };
+  // v14 iOS without originalTransactionIdentifierIOS: id only.
+  const v14Ios = { id: '2000000777', productId: 'pro.yearly', platform: 'ios', purchaseToken: JWS };
+
+  it('reads the JWS from purchaseToken on iOS', () => {
+    expect(jwsFromPurchase(v15Ios)).toBe(JWS);
+    expect(jwsFromPurchase(v14Ios)).toBe(JWS);
+  });
+
+  it('never uses the iOS JWS as the transaction id', () => {
+    expect(transactionIdFromPurchase(v15Ios)).toBe('2000000001');
+    expect(transactionIdFromPurchase(v14Ios)).toBe('2000000777');
+  });
+
+  it('keeps the Play token as the Android id and never treats it as a JWS', () => {
+    expect(transactionIdFromPurchase(v15Android)).toBe('opaque.AO-J1Oxyz');
+    expect(jwsFromPurchase(v15Android)).toBeUndefined();
+    expect(jwsFromPurchase({ platform: 'android', purchaseToken: JWS })).toBeUndefined();
+  });
+
+  it('uses Platform.OS when the purchase carries no platform', () => {
+    expect(jwsFromPurchase({ id: '1', purchaseToken: JWS }, 'ios')).toBe(JWS);
+    expect(transactionIdFromPurchase({ id: '1', purchaseToken: JWS }, 'ios')).toBe('1');
+    expect(transactionIdFromPurchase({ id: 'GPA.1', purchaseToken: 'tok' }, 'android')).toBe('tok');
+  });
+
+  it('prefers jwsRepresentationIos over purchaseToken', () => {
+    const other = 'eyJvdGhlciI6MX0.eyJ4IjoxfQ.c2ln';
+    expect(jwsFromPurchase({ platform: 'ios', jwsRepresentationIos: other, purchaseToken: JWS })).toBe(other);
+  });
+
+  it('ignores a non-JWS iOS purchaseToken', () => {
+    expect(jwsFromPurchase({ platform: 'ios', purchaseToken: 'a.b.c' })).toBeUndefined();
+  });
+});

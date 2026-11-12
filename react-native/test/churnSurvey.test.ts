@@ -98,6 +98,15 @@ describe('churn survey rules', () => {
     ).toEqual([{ originalId: 'tok', productId: 'pro', willAutoRenew: false }]);
   });
 
+  it('reads react-native-iap 15 Android purchases via isAutoRenewing, never iOS ones', () => {
+    expect(
+      renewalsFromPurchases([
+        { platform: 'android', purchaseToken: 'tok15', productId: 'pro', isAutoRenewing: true },
+        { platform: 'ios', purchaseToken: 'eyJ.a.b', productId: 'pro', isAutoRenewing: false },
+      ])
+    ).toEqual([{ originalId: 'tok15', productId: 'pro', willAutoRenew: true }]);
+  });
+
   it('formats the UTC day', () => {
     expect(utcDay(Date.UTC(2026, 10, 10, 23, 59))).toBe('2026-11-10');
   });

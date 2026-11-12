@@ -120,6 +120,28 @@ public enum RevenueHog {
         await client.flushAll()
     }
 
+    /// This install's id: a UUID string (`UUID().uuidString`, uppercase),
+    /// minted on first use, kept in the Keychain and unchanged by
+    /// `reset()`. `nil` before `configure()`. Prefer `appAccountToken`
+    /// when handing it to StoreKit.
+    public static var installId: String? {
+        get async {
+            guard let client = currentClient() else { return nil }
+            return await client.installId
+        }
+    }
+
+    /// `installId` as a `UUID`, ready for StoreKit's
+    /// `Product.PurchaseOption.appAccountToken(_:)` so App Store
+    /// notifications for the purchase join this install. `nil` before
+    /// `configure()`.
+    public static var appAccountToken: UUID? {
+        get async {
+            guard let id = await installId else { return nil }
+            return UUID(uuidString: id)
+        }
+    }
+
     /// Forgets the current user (call on logout). A fresh anonymous id is
     /// issued for whatever happens next.
     public static func reset() {

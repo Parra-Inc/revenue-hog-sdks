@@ -48,6 +48,10 @@ actor HogClient {
     /// The App Store storefront country code, sent with the AdServices token.
     let storefront: @Sendable () async -> String?
 
+    /// Reads a Bool from the app's own defaults for a legacy key. Injectable
+    /// so tests never touch `UserDefaults.standard`.
+    let legacyAdServicesFlag: @Sendable (String) -> Bool
+
     /// How long a tracked event may sit in the buffer before a batch goes out.
     let eventFlushDelay: TimeInterval
     var eventFlushTask: Task<Void, Never>?
@@ -67,8 +71,10 @@ actor HogClient {
         backoff: @escaping @Sendable (Int) -> TimeInterval = { pow(2, Double($0)) * 0.5 },
         adServicesToken: @escaping @Sendable () async -> String? = AdServicesSource.token,
         storefront: @escaping @Sendable () async -> String? = AdServicesSource.storefront,
+        legacyAdServicesFlag: @escaping @Sendable (String) -> Bool = { UserDefaults.standard.bool(forKey: $0) },
         eventFlushDelay: TimeInterval = 10
     ) {
+        self.legacyAdServicesFlag = legacyAdServicesFlag
         self.adServicesToken = adServicesToken
         self.storefront = storefront
         self.eventFlushDelay = eventFlushDelay

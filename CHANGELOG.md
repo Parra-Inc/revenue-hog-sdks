@@ -3,7 +3,19 @@
 All three SDKs (Swift package tag, `com.revenuehog:revenuehog-android`,
 `@revenuehog/react-native`) share one version number.
 
-## 0.5.1 (unreleased)
+## 0.5.2 (unreleased)
+
+### Fixed
+- Swift: automatic AdServices capture no longer re-sends the token for
+  installs that reported it themselves before adopting the SDK. If any of the
+  legacy `UserDefaults.standard` flags `revenuehog.adservices.reported`,
+  `attribution.adservices.reported`, `adservices.attribution.reported` or
+  `adservices.reported` is true, the SDK marks AdServices as sent and skips
+  capture. Previously those installs created a duplicate attribution row
+  under the SDK's new install id. The legacy keys are read only, never
+  modified.
+
+## 0.5.1 (2026-11-11)
 
 ### Fixed
 - `reset()` no longer discards pending work on any SDK. It only rotates

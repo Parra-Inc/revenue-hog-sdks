@@ -33,6 +33,20 @@ final class PaywallTests: XCTestCase {
         XCTAssertTrue(anonId?.hasPrefix("$anon_") == true)
     }
 
+    func testInstallIdIsAUUIDMatchingThePaywallRequest() async {
+        let secure = TestSupport.enrolledSecureStore()
+        let transport = MockTransport(script: [.json(200, experimentJSON)])
+        let client = TestSupport.makeClient(transport: transport, secureStore: secure)
+        let id = await client.installId
+        XCTAssertNotNil(UUID(uuidString: id))
+        XCTAssertEqual(id, id.uppercased())
+        _ = await client.paywall(entitlement: "pro", fallback: [])
+        await client.reset()
+        let afterReset = await client.installId
+        XCTAssertEqual(afterReset, id)
+        XCTAssertEqual(paywallRequests(transport).first?.json["installId"] as? String, id)
+    }
+
     func testInstallIdPersistsAcrossClientsAndSurvivesReset() async {
         let secure = TestSupport.enrolledSecureStore()
         let transport = MockTransport(script: [.json(200, experimentJSON), .json(200, experimentJSON)])

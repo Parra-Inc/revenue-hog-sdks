@@ -97,6 +97,20 @@ object RevenueHog {
         withClient("attributePurchase") { it.attributePurchase(purchaseToken, productId) }
     }
 
+    /**
+     * This install's id: an uppercase UUID string, minted on first use and
+     * unchanged by [reset]. `null` before [configure]. Pass it as Play
+     * Billing's `setObfuscatedAccountId` or wherever you need a stable
+     * per-install key.
+     */
+    @JvmStatic
+    val installId: String?
+        get() = try {
+            client?.installId()
+        } catch (_: Throwable) {
+            null
+        }
+
     /** Forgets the current user (call on logout); issues a fresh anonymous id. */
     @JvmStatic
     fun reset() {

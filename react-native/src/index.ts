@@ -177,6 +177,22 @@ export const RevenueHog = {
     );
   },
 
+  /**
+   * This install's id: an uppercase UUID string (for example
+   * `6F1C2A9E-1B7D-4E0A-9C3F-2D5B8A7E4C10`), minted on first use and kept
+   * across logout and `reset()`. Pass it to StoreKit as `appAccountToken`
+   * so App Store notifications join this install. Rejects when called
+   * before `configure()`.
+   */
+  getInstallId(): Promise<string> {
+    if (!client) {
+      return Promise.reject(
+        new Error('getInstallId called before configure: call RevenueHog.configure() first')
+      );
+    }
+    return client.installId();
+  },
+
   /** Forget the current user (call on logout); issues a fresh anonymous id. */
   reset(): Promise<void> {
     return withClient('reset', (c) => c.reset());
@@ -279,7 +295,11 @@ export {
   ChurnSurveySheet,
   builtInChurnSurveyPresenter,
 } from './ChurnSurveySheet';
-export type { ChurnSurveyHostProps, ChurnSurveySheetProps } from './ChurnSurveySheet';
+export type {
+  ChurnSurveyElement,
+  ChurnSurveyHostProps,
+  ChurnSurveySheetProps,
+} from './ChurnSurveySheet';
 export { churnSurveyLabels } from './churnSurveyLabels';
 export type { ChurnSurveyLabels } from './churnSurveyLabels';
 export { validEventName } from './client';

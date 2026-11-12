@@ -273,8 +273,6 @@ extension HogClient {
 
     // MARK: - AdServices
 
-    /// Captures the Apple Ads token once per install. A launch without a
-    /// token (framework missing, transient error) simply tries next launch.
     /// `UserDefaults.standard` keys that apps used to persist "AdServices
     /// token reported" before they adopted the SDK. Those installs already
     /// sent their token to /api/sdk/v1/adservices under a different install
@@ -287,6 +285,8 @@ extension HogClient {
         "adservices.reported",              // ai-drops apps
     ]
 
+    /// Captures the Apple Ads token once per install. A launch without a
+    /// token (framework missing, transient error) simply tries next launch.
     func sendAdServicesTokenIfNeeded() async {
         guard !storage.adServicesSent else { return }
         if let key = Self.legacyAdServicesReportedKeys.first(where: { legacyAdServicesFlag($0) }) {

@@ -155,6 +155,7 @@ enum TestSupport {
         options: Options = Options(baseURL: URL(string: "https://example.test")!, logLevel: .silent),
         adServicesToken: @escaping @Sendable () async -> String? = { nil },
         storefront: @escaping @Sendable () async -> String? = { nil },
+        legacyAdServicesFlag: @escaping @Sendable (String) -> Bool = { _ in false },
         eventFlushDelay: TimeInterval = 3_600
     ) -> HogClient {
         HogClient(
@@ -179,6 +180,7 @@ enum TestSupport {
             backoff: { _ in 0 },
             adServicesToken: adServicesToken,
             storefront: storefront,
+            legacyAdServicesFlag: legacyAdServicesFlag,
             eventFlushDelay: eventFlushDelay
         )
     }

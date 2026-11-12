@@ -275,8 +275,25 @@ extension HogClient {
 
     /// Captures the Apple Ads token once per install. A launch without a
     /// token (framework missing, transient error) simply tries next launch.
+    /// `UserDefaults.standard` keys that apps used to persist "AdServices
+    /// token reported" before they adopted the SDK. Those installs already
+    /// sent their token to /api/sdk/v1/adservices under a different install
+    /// id, so capturing again on the first SDK launch would create a
+    /// duplicate attribution row. Read only, never modified or deleted.
+    static let legacyAdServicesReportedKeys = [
+        "revenuehog.adservices.reported",   // most apps
+        "attribution.adservices.reported",  // skipper
+        "adservices.attribution.reported",  // thoughtful
+        "adservices.reported",              // ai-drops apps
+    ]
+
     func sendAdServicesTokenIfNeeded() async {
         guard !storage.adServicesSent else { return }
+        if let key = Self.legacyAdServicesReportedKeys.first(where: { legacyAdServicesFlag($0) }) {
+            log.debug("AdServices already reported before the SDK (\(key)), skipping capture")
+            storage.adServicesSent = true
+            return
+        }
         // Already waiting in the queue: flush() sets the flag when it lands.
         // If the queue later evicts it, the flag stays unset and the next
         // launch captures the token again.

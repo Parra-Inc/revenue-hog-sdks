@@ -21,7 +21,7 @@ https://github.com/Parra-Inc/revenue-hog-sdks
 Select the `RevenueHog` product. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.5.1")
+.package(url: "https://github.com/Parra-Inc/revenue-hog-sdks", from: "0.5.2")
 ```
 
 Then add the **App Attest capability** to your app target

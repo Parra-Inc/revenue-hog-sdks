@@ -52,7 +52,8 @@ public enum FeedbackResult: Sendable, Equatable {
     case sent(id: String?)
     /// Offline or rate limited: persisted and delivered on a later flush or launch.
     case queued
-    /// Invalid input, or a request the server will never accept. Not retried.
+    /// Invalid input, a request the server will never accept, or one that
+    /// could not be saved for later. Not retried.
     case rejected(reason: String)
 }
 
@@ -186,13 +187,14 @@ extension HogClient {
                 bundleId: device.bundleId, platform: device.platform, events: batch
             )
             guard let body = try? Payloads.encoder.encode(payload) else { continue }
-            if await deliver(path: "/api/sdk/v1/events", body: body, attempts: 3) {
+            if await deliver(path: Self.eventsPath, body: body, attempts: 3) {
                 continue
             }
-            queue.append(PendingRequest(path: "/api/sdk/v1/events", body: body))
-            log.info("queued /api/sdk/v1/events for later delivery")
+            enqueue(Self.eventsPath, body)
         }
     }
+
+    static let eventsPath = "/api/sdk/v1/events"
 
     private func scheduleEventFlush() {
         guard eventFlushTask == nil else { return }
@@ -254,9 +256,7 @@ extension HogClient {
         }
         let path = "/api/sdk/v1/feedback"
         guard let response = await deliverResponse(path: path, body: body, attempts: 3) else {
-            queue.append(PendingRequest(path: path, body: body))
-            log.info("queued \(path) for later delivery")
-            return .queued
+            return enqueue(path, body) ? .queued : reject("could not be saved for later")
         }
         guard (200..<300).contains(response.status) else {
             return .rejected(reason: "HTTP \(response.status)")
@@ -318,8 +318,7 @@ extension HogClient {
             storage.adServicesSent = true
             await flush()
         } else {
-            queue.append(PendingRequest(path: Self.adServicesPath, body: body))
-            log.info("queued \(Self.adServicesPath) for later delivery")
+            enqueue(Self.adServicesPath, body)
         }
     }
 

@@ -86,6 +86,78 @@ final class MockTransport: Transport, @unchecked Sendable {
     }
 }
 
+/// A transport that answers 200 after running `onPost`, while the caller is
+/// still waiting on the response: the window in which the actor's other work
+/// interleaves with a delivery.
+final class HookTransport: Transport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [RecordedRequest] = []
+    var onPost: @Sendable (RecordedRequest) async -> Void = { _ in }
+
+    var recorded: [RecordedRequest] {
+        lock.lock(); defer { lock.unlock() }
+        return requests
+    }
+
+    func post(url: URL, body: Data, headers: [String: String]) async throws -> TransportResponse {
+        let request = RecordedRequest(url: url, body: body, headers: headers)
+        record(request)
+        await onPost(request)
+        return TransportResponse(status: 200, body: Data())
+    }
+
+    func get(url: URL, headers: [String: String]) async throws -> TransportResponse {
+        record(RecordedRequest(url: url, body: Data(), headers: headers, method: "GET"))
+        return TransportResponse(status: 200, body: Data())
+    }
+
+    private func record(_ request: RecordedRequest) {
+        lock.lock(); defer { lock.unlock() }
+        requests.append(request)
+    }
+}
+
+/// Holds whoever waits on it until it is opened: a delivery kept in flight
+/// while a test does something else.
+final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let waiting = waiters
+        waiters = []
+        lock.unlock()
+        waiting.forEach { $0.resume() }
+    }
+}
+
+/// A task started from inside a transport hook, kept so the test can wait for it.
+final class TaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Task<Void, Never>?
+
+    var task: Task<Void, Never>? {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}
+
 /// Scriptable AttestService. Results are consumed in order; once a script
 /// runs dry, calls succeed with generated defaults.
 final class FakeAttestService: AttestService, @unchecked Sendable {
@@ -143,7 +215,7 @@ enum TestSupport {
     }
 
     static func makeClient(
-        transport: MockTransport,
+        transport: Transport,
         store: KeyValueStore = MemoryStore(),
         secureStore: KeyValueStore = enrolledSecureStore(),
         attestService: AttestService = FakeAttestService(),

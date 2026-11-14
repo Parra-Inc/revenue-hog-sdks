@@ -149,11 +149,15 @@ struct AttestResponse: Decodable {
 }
 
 /// A request that couldn't be delivered yet, persisted to disk and
-/// replayed by `HogClient.flush()`. Both endpoints are idempotent, so
-/// replays are safe.
+/// replayed by `HogClient.flush()`. Identify and attribute are idempotent,
+/// so their replays are safe; an event batch or feedback replayed after its
+/// response was lost is stored twice, since the server keeps no id for them.
 struct PendingRequest: Codable, Equatable {
     var path: String
     var body: Data
+
+    /// Event batches are what a full queue gives up first (see `DiskQueue.append`).
+    var isEventBatch: Bool { path == HogClient.eventsPath }
 }
 
 enum Payloads {

@@ -40,6 +40,10 @@ actor HogClient {
     private var attestationOutcome: AttestationOutcome?
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var reenrolledAfter401 = false
+    /// The drain under way. The actor interleaves at every await, so a second
+    /// flush started meanwhile waits for this one rather than delivering the
+    /// same requests again.
+    private var drainTask: Task<Void, Never>?
 
     /// Reads the Apple Ads attribution token. Injectable so tests never
     /// touch AdServices; nil means "no token this launch, try next launch".
@@ -208,8 +212,10 @@ actor HogClient {
         var sent = storage.sentTransactions
         sent[originalTransactionId] = user
         storage.sentTransactions = sent
-        await send("/api/sdk/v1/attribute", payload)
+        await send(Self.attributePath, payload)
     }
+
+    static let attributePath = "/api/sdk/v1/attribute"
 
     /// Forgets the identified user and anonymous id (e.g. on logout).
     /// Device enrollment survives; it is not tied to a user, and so does
@@ -223,17 +229,66 @@ actor HogClient {
     }
 
     /// Replays queued requests in order; stops at the first failure.
+    ///
+    /// A flush asked for while another runs waits for it, then drains what is
+    /// left, so two never deliver the same request. A drain that stops early
+    /// can leave an attribution queued behind one sent since; it then goes out
+    /// under its transaction's newer owner (see `currentBody(of:)`).
     func flush() async {
-        var pending = queue.load()
-        guard !pending.isEmpty else { return }
-        log.debug("flushing \(pending.count) queued request(s)")
-        while !pending.isEmpty {
-            let item = pending[0]
-            guard await deliver(path: item.path, body: item.body, attempts: 1) else { break }
-            if item.path == Self.adServicesPath { storage.adServicesSent = true }
-            pending.removeFirst()
+        while let running = drainTask {
+            await running.value
+            // Its own flush clears it; until that has run, this one does.
+            if drainTask == running { drainTask = nil }
         }
-        queue.save(pending)
+        let task = Task { await drain() }
+        drainTask = task
+        await task.value
+        if drainTask == task { drainTask = nil }
+    }
+
+    /// Delivers the queue head first. The file is read again after each
+    /// delivery rather than held across it: a send that fails meanwhile
+    /// appends to it, and a stale copy saved at the end would undo that.
+    private func drain() async {
+        while let item = queue.load().first {
+            log.debug("flushing queued \(item.path)")
+            if item.path == Self.adServicesPath, !options.enableAdServicesAttribution {
+                // Queued while the option was on. The app has turned it off
+                // since, so the token is not sent.
+                log.debug("AdServices is off, dropped the queued token")
+                guard removeHead(item) else { return }
+                continue
+            }
+            guard await deliver(path: item.path, body: currentBody(of: item), attempts: 1) else { return }
+            if item.path == Self.adServicesPath { storage.adServicesSent = true }
+            guard removeHead(item) else { return }
+        }
+    }
+
+    /// A removal that did not land would leave the item at the head, and the
+    /// drain would send it again until the server refused, so it stops.
+    private func removeHead(_ item: PendingRequest) -> Bool {
+        guard queue.removeHead(item) else {
+            log.error("could not rewrite the queue on disk; the rest waits for later")
+            return false
+        }
+        return true
+    }
+
+    /// What a queued request sends now. An attribution goes out under the user
+    /// its transaction was last reported for: identify re-sends each one for
+    /// the new user straight away, and the server keeps whichever link lands
+    /// last, so an older one replayed after that would hand the purchase back
+    /// to a user the server has merged away. Its `jws` stays, and the server
+    /// only ever counts that in the link's favor.
+    private func currentBody(of item: PendingRequest) -> Data {
+        guard item.path == Self.attributePath,
+              var payload = try? JSONDecoder().decode(AttributePayload.self, from: item.body),
+              let owner = storage.sentTransactions[payload.originalTransactionId],
+              owner != payload.appUserId
+        else { return item.body }
+        payload.appUserId = owner
+        return (try? Payloads.encoder.encode(payload)) ?? item.body
     }
 
     // MARK: - Store environment
@@ -359,9 +414,20 @@ actor HogClient {
         if await deliver(path: path, body: body, attempts: 3) {
             await flush()
         } else {
-            queue.append(PendingRequest(path: path, body: body))
-            log.info("queued \(path) for later delivery")
+            enqueue(path, body)
         }
+    }
+
+    /// Keeps a request that could not be delivered for the next flush.
+    /// Returns whether it was kept.
+    @discardableResult
+    func enqueue(_ path: String, _ body: Data) -> Bool {
+        guard queue.append(PendingRequest(path: path, body: body)) else {
+            log.warn("queue full or unwritable, dropped \(path)")
+            return false
+        }
+        log.info("queued \(path) for later delivery")
+        return true
     }
 
     /// Enrolled requests carry the device token; everything else says why

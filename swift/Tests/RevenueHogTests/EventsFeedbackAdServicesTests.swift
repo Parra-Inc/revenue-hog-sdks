@@ -91,6 +91,35 @@ final class EventsFeedbackAdServicesTests: XCTestCase {
         XCTAssertEqual(requests(transport, "/api/sdk/v1/events").count, 4)
     }
 
+    /// Offline long enough to fill the queue: a new batch is what gets
+    /// dropped, and a purchase that needs room takes it from the batches.
+    func testAnEventBacklogNeverCostsAPurchaseItsPlace() async throws {
+        let queue = DiskQueue(directory: directory)
+        let stale = try Payloads.encoder.encode(AttributePayload(
+            appUserId: "u", bundleId: "com.example.app", originalTransactionId: "txn_0"
+        ))
+        queue.append(PendingRequest(path: "/api/sdk/v1/attribute", body: stale))
+        for i in 1..<queue.maxCount {
+            queue.append(PendingRequest(path: HogClient.eventsPath, body: Data("\(i)".utf8)))
+        }
+        let net = MockTransport.Response.networkError
+        let transport = MockTransport(script: [net, net, net, net, net, net])
+        let client = TestSupport.makeClient(transport: transport, queueDirectory: directory)
+
+        await client.track("tap", properties: nil)
+        await client.flushEvents()
+        XCTAssertEqual(queue.load().count, queue.maxCount)
+        XCTAssertEqual(queue.load().last?.body, Data("\(queue.maxCount - 1)".utf8))
+
+        await client.attribute(originalTransactionId: "txn_1", productId: nil)
+        let paths = queue.load().map(\.path)
+        XCTAssertEqual(paths.count, queue.maxCount)
+        XCTAssertEqual(paths.filter { $0 == "/api/sdk/v1/attribute" }.count, 2)
+        XCTAssertEqual(paths.first, "/api/sdk/v1/attribute")
+        XCTAssertEqual(paths.last, "/api/sdk/v1/attribute")
+        XCTAssertEqual(queue.load()[1].body, Data("2".utf8))
+    }
+
     func testEventTimerFlushes() async throws {
         let transport = MockTransport()
         let client = TestSupport.makeClient(
@@ -165,6 +194,21 @@ final class EventsFeedbackAdServicesTests: XCTestCase {
         await client.flushAll()
         XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
         XCTAssertEqual(requests(transport, "/api/sdk/v1/feedback").count, 4)
+    }
+
+    func testFeedbackThatCannotBeSavedForLaterIsRejected() async throws {
+        let net = MockTransport.Response.networkError
+        let transport = MockTransport(script: [net, net, net])
+        let client = TestSupport.makeClient(transport: transport, queueDirectory: directory)
+        // The client has made its directory; the disk now refuses the write.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+        try XCTSkipIf(FileManager.default.isWritableFile(atPath: directory.path), "root writes anyway")
+
+        let result = await client.sendFeedback(kind: .bug, message: "broken", rating: nil, data: nil, metadata: nil)
+
+        guard case .rejected = result else { return XCTFail("expected .rejected, got \(result)") }
+        XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
     }
 
     func testFeedbackServerRejectionIsNotQueued() async {
@@ -270,6 +314,34 @@ final class EventsFeedbackAdServicesTests: XCTestCase {
         await client.sendAdServicesTokenIfNeeded()
         XCTAssertEqual(store.get("rh_adservices_sent"), "1")
         XCTAssertEqual(requests(transport, "/api/sdk/v1/adservices").count, 4)
+    }
+
+    /// Queued while the option was on, then the app turned it off: the token
+    /// is not sent, and nothing records it as sent.
+    func testAQueuedTokenIsDroppedOnceAdServicesIsOff() async {
+        let store = MemoryStore()
+        let net = MockTransport.Response.networkError
+        let offline = MockTransport(script: [net, net, net])
+        let before = TestSupport.makeClient(
+            transport: offline, store: store, queueDirectory: directory, adServicesToken: { "tok" }
+        )
+        await before.sendAdServicesTokenIfNeeded()
+        XCTAssertEqual(DiskQueue(directory: directory).load().map(\.path), [HogClient.adServicesPath])
+
+        let transport = MockTransport()
+        let after = TestSupport.makeClient(
+            transport: transport, store: store, queueDirectory: directory,
+            options: Options(
+                baseURL: URL(string: "https://example.test")!, logLevel: .silent,
+                enableAdServicesAttribution: false
+            ),
+            adServicesToken: { "tok" }
+        )
+        await after.flushAll()
+
+        XCTAssertTrue(requests(transport, HogClient.adServicesPath).isEmpty)
+        XCTAssertTrue(DiskQueue(directory: directory).load().isEmpty)
+        XCTAssertNil(store.get("rh_adservices_sent"))
     }
 
     func testAdServicesPermanentRejectionSetsFlag() async {

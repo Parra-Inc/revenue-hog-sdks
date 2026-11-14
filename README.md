@@ -38,7 +38,8 @@ Shared behavior, all three:
 - persisted anonymous id, so purchases attribute before login;
   `identify(userId)` re-attributes them afterward
 - offline/rate-limit safe: exponential backoff (max 3), then a persistent
-  queue that flushes later — both endpoints are idempotent
+  queue that flushes later. Identify and attribute are idempotent; events
+  and feedback are not, so one whose response was lost is stored twice
 - never crashes the host app: every failure is swallowed into a debug log
 
 ## Quickstart — the one line
@@ -168,7 +169,7 @@ All three SDKs speak the same endpoints:
 ```
 POST /api/sdk/v1/attest/challenge   {} -> { challenge }            (iOS enrollment)
 POST /api/sdk/v1/attest             { keyId, attestation, challenge, bundleId } -> { deviceToken }
-POST /api/sdk/v1/identify   { appUserId, bundleId, platform, osVersion?, deviceModel?, locale?, attributes? }
+POST /api/sdk/v1/identify   { appUserId, anonymousAppUserId?, bundleId, platform, osVersion?, deviceModel?, locale?, attributes? }
 POST /api/sdk/v1/attribute  { appUserId, bundleId, originalTransactionId, productId?, jws? }
 POST /api/sdk/v1/paywall    { appUserId, bundleId, installId, entitlement, environment?, forceVariant? }
                             -> { entitlement, skus: [{ productId, kind }], experimentId?, variantKey?, ttlSeconds }
@@ -184,9 +185,12 @@ POST /api/sdk/v1/adservices { bundleId, platform, installId, token, environment,
 Authorization: Bearer dt_…          (enrolled iOS; omitted when unattested)
 ```
 
-The write endpoints are idempotent. `401` = bad device token (re-enroll
-once), `429` = rate limited (backoff + queue). On iOS, `jws` carries the
-StoreKit 2 signed transaction so the purchase link verifies even unattested.
+Identify and attribute are idempotent. Events and feedback are not: the
+server keeps no id for them, so one whose response was lost is stored
+twice. `401` =
+bad device token (re-enroll once), `429` = rate limited (backoff + queue).
+On iOS, `jws` carries the StoreKit 2 signed transaction so the purchase
+link verifies even unattested.
 `installId` is a per-install UUID the SDK mints and persists (iOS: a
 non-synchronizable Keychain item that survives reinstalls) so experiment
 assignment sticks to the device; an empty `skus` answer means "render your

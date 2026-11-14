@@ -29,6 +29,6 @@ Thanks for helping make the hog fatter.
 
 ## API contract
 
-The SDKs speak to two endpoints only (`POST /api/sdk/v1/identify`,
-`POST /api/sdk/v1/attribute`). Contract changes must land in the backend
-first and stay backward compatible — SDKs in the wild update slowly.
+The SDKs speak to the endpoints listed under "API contract" in the README.
+Contract changes must land in the backend first and stay backward
+compatible — SDKs in the wild update slowly.

@@ -205,15 +205,29 @@ anonymous id along so the server merges the two.
   Calling any method before `configure` is a logged no-op.
 - **Offline-safe.** Undeliverable requests (network down, `429` rate limits,
   `5xx`) retry with exponential backoff (max 3 attempts), then persist to a
-  small on-disk queue (cap 100) that flushes on the next launch/call.
+  small on-disk queue (cap 100) that flushes on the next launch/call. A full
+  queue drops a new event batch rather than an older request, and a request
+  that needs room takes it from the oldest event batch first, so a backlog
+  of events never takes a purchase's place in the queue.
 - **Startup-safe.** Calls made while enrollment is still in flight wait up
   to 10 seconds for the device token, then go out unattested so a slow first
   launch still delivers data.
-- **Idempotent.** Both endpoints dedupe server-side; the SDK also skips
-  transactions it already reported for the current user.
-- **Private.** Sends only: your user id (or an anonymous UUID), bundle id,
-  OS version, device model, locale, attributes you pass, and the Apple-signed
-  transaction JWS for purchases. No IDFA, no fingerprinting.
+- **Idempotent where it can be.** Identify and attribute dedupe server-side,
+  and the SDK skips transactions it already reported for the current user.
+  Events are best effort: the server keeps no event id, so a batch whose
+  response was lost is stored twice, and a full offline queue drops new
+  batches first. Feedback whose response was lost is stored twice too.
+- **Private.** No IDFA, no fingerprinting. What goes out: your user id (or
+  an anonymous UUID); bundle id, OS version, device model, locale and app
+  version; attributes you pass; the events, feedback and churn-survey
+  answers your app sends; purchase and product ids, with the Apple-signed
+  transaction JWS and StoreKit's environment; the App Attest enrollment and
+  the device token it earns; a per-install ID (a Keychain UUID that
+  survives reinstalls, for experiment assignment and Apple Ads attribution)
+  with the paywall experiment shown; and, unless
+  `enableAdServicesAttribution` is off, the Apple Ads attribution token with
+  the storefront country. The API contract in the repo's README lists every
+  field.
 
 ## Troubleshooting
 
@@ -228,14 +242,13 @@ anonymous id along so the server merges the two.
   automatically.
 - **Sandbox purchases**: attribution works in sandbox too; the dashboard
   hides sandbox data unless you enable it in settings.
-- **Self-hosting**: point `Options.baseURL` at your deployment; paths are
-  `/api/sdk/v1/identify`, `/api/sdk/v1/attribute`, and the two
-  `/api/sdk/v1/attest` enrollment endpoints.
+- **Self-hosting**: point `Options.baseURL` at your deployment. The paths
+  are the ones listed under "API contract" in the repo's README.
 
 ## Tests
 
 ```sh
-cd swift && swift test
+swift test   # at the repo root, where Package.swift lives
 ```
 
 Queue persistence, payload encoding, retry/backoff, identity aliasing, the
